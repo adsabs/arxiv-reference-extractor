@@ -1,4 +1,4 @@
-#!/bin/sh
+#! /bin/bash
 #
 # A simple wrapper around extractrefs.pl so we can run this
 # as a one-off process for specific bibcodes
@@ -18,7 +18,7 @@ warn () {
     echo "$script: $1 at " `date` 1>&2
 }
 
-bindir="$ADS_ABSTRACTS/sources/ArXiv/bin"
+bindir="$(cd $(dirname $0) && pwd)"
 fdir="$ADS_ABSTRACTS/sources/ArXiv/fulltext"
 opts=
 
