@@ -481,6 +481,11 @@ sub process_one_tex {
         warn "$script: $id: Writing references to: $reffile\n"
             if ($debug);
 
+        my $dir = $reffile; $dir =~ s:[^/]+\Z::;
+        unless (-d $dir) {
+            system("mkdir -p $dir");
+        }
+
         open(my $rf, ">$reffile");
         unless ($rf) {
             warn "$script: $id: cannot open ref file $reffile: $!";
