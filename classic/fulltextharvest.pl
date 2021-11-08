@@ -9,22 +9,22 @@
 #   multi-file tex, ps or html (.tar.gz)
 #    Content-Encoding: x-gzip
 #    Content-Type: application/x-eprint-tar
-#   
+#
 #   single ps (.ps.gz)
 #    Content-Encoding: x-gzip
 #    Content-Type: application/postscript
-#   
+#
 #   single html (.html.gz)
 #    Content-Encoding: x-gzip
 #    Content-Type: text/html
-#   
+#
 #   single pdf (.pdf)
 #    Content-Type: application/pdf
-#   
+#
 #   single tex source (.gz)
 #    Content-Encoding: x-gzip
 #    Content-Type: application/x-eprint
-#  
+#
 # AA 10/08/2004
 #
 # Changed on 6/29/05 to use the filename of the redirected request
@@ -72,7 +72,7 @@ my $delay = $default_delay;
 
 my $usage = <<EOF
 Usage: $script [OPTIONS] < arxiv_ids
-This script downloads/refreshes the fullext of ArXiv preprints from 
+This script downloads/refreshes the fullext of ArXiv preprints from
 the top-level url $baseurl
 into the directory $basedir
 OPTIONS:
@@ -103,7 +103,7 @@ my %type2suff = ('application/x-eprint-tar' => 'tar',
 		 'application/x-eprint'     => 'tex');
 
 # now create all possible file extensions based on these
-my @suffixes = map { 
+my @suffixes = map {
     my $s = $_; map { "$s$_" } values %enc2suff } values %type2suff;
 #warn "suffixes: ", join(" ", @suffixes), "\n";
 my $suffix_rx = join("|", map { "\Q$_\E" } @suffixes, 'gz');
@@ -132,7 +132,7 @@ while (@ARGV and $ARGV[0] =~ /^--/) {
 	my $ef = shift(@ARGV);
 	die "$script: illegal value for option --exclude: $ef"
 	    unless ($ef and -f $ef);
-	open(my $fh, $ef) or 
+	open(my $fh, $ef) or
 	    die "$script: cannot open input file $ef: $!";
 	%exclude = map { s/\s+//g; ($_,1) } <$fh>;
     } elsif ($s eq '--debug') {
@@ -206,7 +206,7 @@ while (<>) {
 	if ($debug);
     $r = getfile($ua,$url,$file,$format);
     if (not $r) {
-	warn "$script: $eprintid: error downloading URL $url at ", 
+	warn "$script: $eprintid: error downloading URL $url at ",
 	scalar(localtime), "\n";
 	next;
     } elsif ($r->code == 304) {
@@ -268,7 +268,7 @@ while (<>) {
 	$r = undef;
 	$r = getfile($ua,$pdfurl,$file,'pdf');
 	if (not $r) {
-	    warn "$script: $eprintid: error downloading URL $pdfurl at ", 
+	    warn "$script: $eprintid: error downloading URL $pdfurl at ",
 	    scalar(localtime), "\n";
 	} elsif ($r->code == 304) {
 	    warn "$script: $eprintid: file $file is up-to-date\n";
@@ -394,4 +394,4 @@ sub getfile {
     return $response;
 }
 
-    
+
