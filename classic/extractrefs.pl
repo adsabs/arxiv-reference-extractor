@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#! /usr/bin/env perl
 
 use strict;
 use warnings;
@@ -38,10 +38,11 @@ my $try_pdf = 1;
 my $harvest_pdf = 1;
 my $skip_refs = 0;
 
-my ($texbase,$pbase,$tbase,$debug,$force,$help);
+my ($texbase, $pbase, $tbase, $debug, $force, $help);
 
 while (@ARGV and $ARGV[0] =~ /^--/) {
     my $s = shift(@ARGV);
+
     if ($s eq '--pbase') {
         $pbase = shift(@ARGV);
     } elsif ($s eq '--tbase') {
@@ -97,25 +98,32 @@ my $spliteprintsrx = join('|', keys(%spliteprints));
 while (<>) {
     my ($pre,$bibcode,$accno,$subdate) = split;
     my $eprint = ADS::Abstracts::ArXiv::parsepath($pre);
+
     unless ($eprint) {
         warn "$script: cannot parse eprint $pre\n";
         $status++;
         next;
     }
+
     my $suffix = $eprint->{suffix};
     my $pfile = $pre;
+
     unless (-f $pfile) {
         $pfile = "$pbase/" . $eprint->{path} .".$suffix";
     }
+
     $suffix = lc($suffix);
     my $id = $eprint->{id};
     my $year = $eprint->{year};
+
     unless (-f $pfile) {
         warn "$script: $id: cannot find \"$pfile\"\n";
         $status++;
         next;
     }
+
     my $format;
+
     if ($suffix eq 'tar.gz' or $suffix eq 'tar' or
         $suffix eq 'tex.gz' or $suffix eq 'tex' or $suffix eq 'gz') {
         $format = 'tex';
@@ -126,6 +134,7 @@ while (<>) {
         $status++;
         next;
     }
+
     my $tfile = "$tbase/". $eprint->{path} .".raw";
 
     if (not -f $tfile) {
@@ -144,37 +153,42 @@ while (<>) {
         chop($partial);
         warn "$script: $id: partial bibcode is $partial\n" if ($debug);
         my @match = $looker->lookbib($partial);
+
         unless (@match) {
             warn "$script: $id: could not find bibcode matching \"$partial\"\n";
             $status++;
             next;
         }
+
         $bibcode = $match[0];
         $subdate = $match[3];
         warn "$script: $id: bibcode set to $bibcode, subdate set to $subdate\n";
     }
 
     if ($format eq 'tex') {
-        my $err = process_one_tex($pfile,$tfile,$bibcode,$id,$subdate);
+        my $err = process_one_tex($pfile, $tfile, $bibcode, $id, $subdate);
         chdir($thisdir);
+
         if ($err) {
-            warn "$script: $id: failed to process LaTeX source file ",
-            "\"$pfile\"\n";
+            warn "$script: $id: failed to process LaTeX source file \"$pfile\"\n";
+
             if ($try_pdf) {
                 $format = 'pdf';
                 warn "$script: $id: will attempt to extract references from PDF version\n";
             }
         }
+
         if ($try_pdf) {
             # now retrieve a PDF file for the preprint
             $pfile = "$pbase/" . $eprint->{path} .".$format";
+
             if ($harvest_pdf) {
-                warn "$script: $id: harvesting pdf fulltext: ",
-                "$bindir/fulltextharvest.pl --format pdf\n";
+                warn "$script: $id: harvesting pdf fulltext: $bindir/fulltextharvest.pl --format pdf\n";
                 open(my $fh, "| $bindir/fulltextharvest.pl --format pdf");
                 print $fh $eprint->{path}, "\n";
                 undef($fh);
-                warn "$script: $id: retrieved PDF file $pfile\n" if (-f $pfile);
+                warn "$script: $id: retrieved PDF file $pfile\n"
+                    if (-f $pfile);
             } elsif (-f $pfile) {
                 warn "$script: $id: using PDF file $pfile\n";
             } else {
@@ -186,7 +200,8 @@ while (<>) {
     }
 
     if ($format eq 'pdf') {
-        my $err = process_one_pdf($pfile,$tfile,$bibcode,$id);
+        my $err = process_one_pdf($pfile, $tfile, $bibcode, $id);
+
         if ($err) {
             warn "$script: $id: error processing PDF file $pfile\n";
             $status++;
@@ -198,15 +213,15 @@ while (<>) {
 }
 
 warn "$script: finished processing at ", scalar(localtime(time)), "\n";
-warn "$script: $status files could not be processed\n" if ($status);
-
+warn "$script: $status files could not be processed\n"
+    if ($status);
 exit(0);
 
 
 sub usage {
-
     die <<EOF
 Usage: $script [OPTIONS] < filelist
+
 OPTIONS:
   --pbase DIR    Specify alternative base directory for fulltext source
                  (default: $def_pbase)
@@ -222,6 +237,7 @@ OPTIONS:
   --skip-refs    perform all data processing but skip writing the references
                  to file (to avoid causing reprocessing); often used with --debug to test
   --debug        print debugging information
+
 The program reads from stdin a table consisting of the fulltext e-print
 file (first column) and optionally its corresponding bibcode (second
 column), accno number (third column), and submission date (fourth column).
@@ -252,12 +268,14 @@ sub process_one_pdf {
     eval {
         @references = $doc_parser->parse($content);
     };
+
     if ($@) {
         warn "$script: $id: error extracting references from pdf file\n";
     } else {
         warn "$script: $id: found ", scalar(@references), " references\n"
             if ($debug);
     }
+
     if (scalar(@references) == 0) {
         warn "$script: $id: warning: no references found\n";
         return 1;
@@ -277,28 +295,26 @@ sub process_one_pdf {
     unless (-d $dir) {
         system("mkdir -p $dir");
     }
+
     my $fh;
     unless (open($fh, ">$reffile")) {
         warn "$script: $id: cannot open output file $reffile: $!";
         return 1;
     }
-    print $fh "%R $bibcode\n%Z\n", join("\n",@references), "\n";
 
+    print $fh "%R $bibcode\n%Z\n", join("\n", @references), "\n";
     return 0;
 }
 
 sub process_one_tex {
-
     my $file    = shift;
     my $reffile = shift;
     my $bibcode = shift;
     my $id = shift;
     my $subdate = shift;
-
     my $def_bibitem = 'bibitem';
     my $count = 0;
-    my $ignore= 0;
-
+    my $ignore = 0;
 
     if (-d $tmp_dir) {
         warn "$script: $id: directory $tmp_dir exists already; deleting it\n";
@@ -314,11 +330,11 @@ sub process_one_tex {
             if ($debug);
         mkdir($tmp_dir);
     }
+
     my $inputfile = $file;
     $inputfile =~ s:^.*/::;
 
-    warn "$script: $id: Copying source file to work directory:\n",
-    "$file --> $tmp_dir/$inputfile\n"
+    warn "$script: $id: Copying source file to work directory:\n$file --> $tmp_dir/$inputfile\n"
         if ($debug);
 
     # Copy the source over to the work directory  for unpacking, processing
@@ -327,13 +343,17 @@ sub process_one_tex {
         cleanup_tmp($tmp_dir,1);
         return 1;
     }
+
     warn "$script: $id: Changing to directory: $tmp_dir\n"
         if ($debug);
+
     unless(chdir($tmp_dir)) {
         warn "$script: $id: cannot cd to $tmp_dir: $!";
         return 1;
     }
+
     my $error = 0;
+
     if ($inputfile =~ /\.tar\.gz$/ or $inputfile =~ /\.tgz$/) {
         $error = system("tar xzf $inputfile") and
             warn "$script: $id: error running tar xzf $inputfile";
@@ -351,12 +371,15 @@ sub process_one_tex {
             warn "$script: $id: error moving file $inputfile to $inputfile.tex";
         $inputfile .= '.tex';
     }
+
     return 1 if ($error);
 
     # Determine a list of files of interest
     use File::Find;
     my @files;
-    find(sub { my $f = $File::Find::name;
+
+    find(sub {
+        my $f = $File::Find::name;
         $f =~ s:^\./::;
         push(@files,$f) if (-f $f);
     }, '.');
@@ -388,6 +411,7 @@ sub process_one_tex {
         $ENV{PATH} = "$texbase/". PATHTETEX3 . ":$dirname:$origpath";
     } else {
         $ENV{PATH} = "$texbase/". PATHTETEX2 . ":$dirname:$origpath";
+
         if ($subdate >= 20040101) {
             $ENV{TEXMFCNF} = "$texbase/2/texmf-2004/web2c";
         } elsif ($subdate >= 20030101) {
@@ -419,6 +443,7 @@ sub process_one_tex {
         $main->{bibitem} ||= $def_bibitem;
         next unless (-f $orig);
         next if ($orig =~ /(psfig)/);
+
         warn "$script: $id: Adding markup. Processing: $orig\n"
             if ($debug);
         munge_refs($orig,$main->{bibitem},$output_fmt) or
@@ -432,6 +457,7 @@ sub process_one_tex {
     # include pdf files helps
     unless (@references) {
         my $changed = 0;
+
         foreach my $main (@main) {
             my $orig = $main->{file};
             next unless (-f $orig);
@@ -440,6 +466,7 @@ sub process_one_tex {
                 if ($debug);
             $changed += convertps2pdf($orig);
         }
+
         if ($changed) {
             warn "$script: $id: attempting to re-extract references\n"
                 if ($debug);
@@ -453,6 +480,7 @@ sub process_one_tex {
     } elsif (@references) {
         warn "$script: $id: Writing references to: $reffile\n"
             if ($debug);
+
         open(my $rf, ">$reffile");
         unless ($rf) {
             warn "$script: $id: cannot open ref file $reffile: $!";
@@ -464,8 +492,7 @@ sub process_one_tex {
     }
 
     # Clean up all files in the working directory
-    warn "$script: $id: Cleaning up the mess behind us.  ",
-        "All files in $tmp_dir will be unlinked\n"
+    warn "$script: $id: Cleaning up the mess behind us.  All files in $tmp_dir will be unlinked\n"
         if ($debug);
     cleanup_tmp($tmp_dir);
 
@@ -493,7 +520,7 @@ sub convertps2pdf {
     close($ofh);
 
     # if there is nothing to change in source, just return
-    return 0 unless  ($a =~ s/\.(ps|eps|epsi|epsf)\b/.pdf/sg);
+    return 0 unless ($a =~ s/\.(ps|eps|epsi|epsf)\b/.pdf/sg);
 
     my $nfh;
     my $tmpfile = "$orig.tmp";
@@ -504,13 +531,14 @@ sub convertps2pdf {
     }
     print $nfh $a;
     close($nfh);
+
     if (system("mv -f \"$tmpfile\" \"$orig\"")) {
         warn "$script: error copying file $tmpfile to $orig: $@";
         return 0;
     } else {
         warn "$script: updated file $orig\n" if ($debug);
+        return 1;
     }
-    return 1;
 }
 
 
@@ -518,8 +546,8 @@ sub get_references {
     my $id = shift;
     my $fmt = shift;
     my $output_fmt = shift;
-
     my @references;
+
     foreach my $main (@_) {
         my $ignore   = $main->{ignore};
         my $mtexfile = $main->{file};
@@ -532,6 +560,7 @@ sub get_references {
             warn "$script: $id: file $mtexfile withdrawn!  Skipping it...\n";
             next;
         }
+
         my $texcmmd;
         if ($output_fmt eq 'pdf') {
             $texcmmd = ($fmt eq 'tex') ? 'pdftex' :
@@ -540,6 +569,7 @@ sub get_references {
             $texcmmd = ($fmt eq 'tex') ? 'tex' :
                 'latex -interaction=nonstopmode';
         }
+
         if ($debug) {
             warn "$script: $id: Bibitem definition: $bibitem\n";
             warn "$script: $id: Command: $texcmmd\n";
@@ -557,6 +587,7 @@ sub get_references {
             warn "$script: $id: TEXMFCNF=", $ENV{TEXMFCNF}, "\n";
             warn "$script: $id: Compiling TeX source...\n";
         }
+
         if (SystemTimeout(100, $texcmmd, $mtexfile)) {
             warn "$script: $id: execution of '$texcmmd $mtexfile' failed\n";
         } elsif ($debug) {
@@ -587,6 +618,7 @@ sub get_references {
         }
 
         my $text_output = $output . '.txt';
+
         if ($output =~ /\.dvi\Z/) {
             if (system("dvitype $output < /dev/null > $text_output")) {
                 warn "$script: $id: error running dvitype on file $output: $@\n";
@@ -604,8 +636,7 @@ sub get_references {
         }
 
         if (@references) {
-            warn "$script: $id: found ", scalar(@references),
-                " refs in file $text_output\n";
+            warn "$script: $id: found ", scalar(@references), " refs in file $text_output\n";
             last;
         } else {
             warn "$script: $id: Cannot find any references in $text_output!\n";
@@ -618,18 +649,15 @@ sub get_references {
 
 sub find_output {
     my $file = shift or return undef;
-
     open(my $fh, $file) or return undef;
     while (<$fh>) {
         return "$1" if (/^Output written on (\S+)/i);
     }
-
     return undef;
 }
 
 # cleans up references extracted from PDF
 sub clean {
-
     my $input     = shift;
     my $title     = shift || '';
     my $type      = 0;
@@ -660,11 +688,10 @@ sub clean {
             $rtype = 2; # [Au] Author, I. 2004, foo
         }  elsif ($input =~ /^\d+(\W+)/) {
             $rtype = 1; # 1. Author, I. 2004, foo  -- or -- 1] Author, I. 2004, foo
-        };
-
+        }
     } else {
         my $type = $rtype;
-    };
+    }
 
     $input =~ s/\s*-\s*/-/g;
 
@@ -674,13 +701,11 @@ sub clean {
         $input =~ s/^\d+\s+(\d+)/$1/;
     } else {
         $input =~ s/^\d+\s*([a-z])/$1/i;
-    };
+    }
 
     $input =~ s/\\([A-Z])(?=[^\"]+\")/\"$1/g;
-
     $input =~ s/\s\s+/ /g;
     $input =~ s/ ,/,/g;
-
     return $input;
 }
 
@@ -814,6 +839,7 @@ sub munge_refs {
         warn "$script: cannot open input file $orig: $!";
         return 0;
     }
+
     open($nfh,">$newfile");
     unless ($nfh) {
         warn "$script: cannot open output file $newfile: $!";
@@ -849,14 +875,17 @@ sub munge_refs {
     my $lastref = '';
     my $tag = '';
     my $type = '';
+
     while (<$ofh>) {
         next if (/^\s*\%/ or /^\s*$/);
         s/\n//;
+
         if (/^\s*\\end\s*\{(chapthebibliography|thebibliography|references)\}/i) {
             if ($lastref) {
-                print $nfh "\n", tag_ref($tag,$lastref,$opntag,$clstag,$type);
+                print $nfh "\n", tag_ref($tag, $lastref, $opntag, $clstag, $type);
                 $lastref = '';
             }
+
             print $nfh "\n$_\n";
             last;
         }
@@ -872,10 +901,12 @@ sub munge_refs {
                     $type = 'reference';
                 }
             }
+
             if ($lastref) {
-                print $nfh "\n", tag_ref($tag,$lastref,$opntag,$clstag,$type);
+                print $nfh "\n", tag_ref($tag, $lastref, $opntag, $clstag, $type);
                 $lastref = '';
             }
+
             $count++;
             $lastref = $_;
         } elsif ($tag) {
@@ -888,7 +919,7 @@ sub munge_refs {
     }
 
     if ($lastref) {
-        print $nfh "\n", tag_ref($tag,$lastref,$opntag,$clstag,$type);
+        print $nfh "\n", tag_ref($tag, $lastref, $opntag, $clstag, $type);
         $lastref = '';
     }
 
@@ -910,18 +941,22 @@ sub munge_refs {
     # Some papers use "\em" for titles
     warn "$script: Replacing all \"{\\em <text>}\" with <text> in file $orig\n"
         if ($debug);
-    local $/ = undef ;
+
+    local $/ = undef;
     my $tmpfile = "$orig.tmp";
+
     open($ofh,"<$orig");
     unless ($ofh) {
         warn "$script: cannot open file $orig: $!";
         return 0;
     }
+
     open($nfh,">$tmpfile");
     unless ($nfh) {
         warn "$script: cannot open file $tmpfile: $!";
         return 0;
     }
+
     $a = <$ofh> || '';
     # why is this useful? To attempt to normalize all titles in double quotes. YMMV
     $a =~ s/\{\\em\ (.*?)\}/"$1"/sg;
@@ -933,6 +968,7 @@ sub munge_refs {
     print $nfh $a;
     close($nfh);
     close($ofh);
+
     if (system("mv -f \"$tmpfile\" \"$orig\"")) {
         warn "$script: error copying file $newfile to $orig: $@";
         return 0;
@@ -958,8 +994,10 @@ sub eps2pdf {
 
     $pdf =~ s/\.(ps|eps|epsi|epsf)\Z/.pdf/ or return 1;
     return 1 if (-f $pdf);
-    warn "$script: running epstopdf $file >/dev/null 2>/dev/null\n" if ($debug);
-#    if (system("epstopdf $file >/dev/null 2>/dev/null")) {
+
+    warn "$script: running epstopdf $file >/dev/null 2>/dev/null\n"
+        if ($debug);
+
     if (SystemTimeout(5, 'epstopdf', $file)) {
         warn "$script: error converting file $file to $pdf\n";
         return 0;
@@ -979,20 +1017,18 @@ sub tag_ref {
     my $type = shift;
 
     use Text::Balanced qw( extract_bracketed );
-    my ($arg,$rest,$sep);
-
-#    warn "prefix: $prefix\ntext: $text\ntype: $type\n";
+    my ($arg, $rest, $sep);
 
     if ($type eq 'bibitem') {
         # can have one of two forms:
         # \bibitem{bar}
         # \bibitem[foo]{bar}
-        ($arg,$rest,$sep) = extract_bracketed($text,'[]');
+        ($arg, $rest, $sep) = extract_bracketed($text, '[]');
         if ($arg) {
             $prefix .= $sep . $arg;
             $text = $rest;
         }
-        ($arg,$rest,$sep) = extract_bracketed($text,'{}');
+        ($arg, $rest, $sep) = extract_bracketed($text, '{}');
         if ($arg) {
             $prefix .= $sep . $arg;
             $text = $rest;
@@ -1002,15 +1038,14 @@ sub tag_ref {
         #    \reference{bibcode} this is the ref (emulateapj)
         # or:
         #    \reference this is the ref (all others)
-        ($arg,$rest,$sep) = extract_bracketed($text,'{}');
+        ($arg, $rest, $sep) = extract_bracketed($text, '{}');
         if ($arg) {
             $prefix .= $sep . $arg;
             $text = $rest;
         }
     }
 
-    my $ref = "\\". $prefix ." $open ". remove_diacritics($text) ."\n$close";
-#    warn "returning: $ref\n";
+    my $ref = "\\". $prefix . " $open " . remove_diacritics($text) . "\n$close";
     return $ref;
 }
 
@@ -1056,7 +1091,8 @@ sub find_main {
     # list of basenames for sample files distributed with Latex macros for
     # different journals.  We assign a negative score to each one of them
     # reflecting how sure we feel that they are not the main latex file
-    my %exclude = ('mn2eguide'   => -100,
+    my %exclude = (
+        'mn2eguide'   => -100,
         'mn2esample'  => -100,
         'mnras_guide' => -100,
         'aa'          => -100,
@@ -1070,6 +1106,7 @@ sub find_main {
         my $score = 0;
         my $title;
         my $bibitem = '';
+
         if ($infile =~ /(psfig)/) {
             next;
         } elsif ($infile =~ /\.(tex|ltx|latex|revtex)$/i) {
@@ -1081,29 +1118,34 @@ sub find_main {
         } else {
             next;
         }
+
         if ($infile =~ m/\.TEX$/) {
             my $oldfile = $infile;
             $infile =~ s/\.TEX$/.tex/;
             rename($oldfile,$infile);
         }
+
         my $basename = $infile;
         $basename =~ s/\.\w+$//;
         if ($exclude{$basename}) {
             $score += $exclude{$basename};
         }
 
-        warn "$script: processing file: $infile\n" if ($debug > 1);
+        warn "$script: processing file: $infile\n"
+            if ($debug > 1);
 
-        open(my $fh,"<$infile");
+        open(my $fh, "<$infile");
         unless ($fh) {
             warn "$script: cannot open file $infile: $!";
             next;
         }
+
         while (<$fh>) {
             if (/\%auto\-ignore/) {
                 $ignore++;
                 last;
             }
+
             if (/^\s*\\begin\s*\{document\}/ or
                 /^\s*[^%].*?\\begin\s*\{document\}/ or
                 /^\s*\\documentclass\b/ or
@@ -1130,19 +1172,23 @@ sub find_main {
                 $notmain{$1}++;
             }
         }
+
         close($fh);
 
-        push(@candidates, { file     => $infile,
-                basename => $basename,
-                score    => $score,
-                bibitem  => $bibitem,
-                title    => $title,
-                fmt      => $format,
-                ignore   => $ignore });
+        push(@candidates, {
+            file     => $infile,
+            basename => $basename,
+            score    => $score,
+            bibitem  => $bibitem,
+            title    => $title,
+            fmt      => $format,
+            ignore   => $ignore
+        });
     }
 
     # now pull it all together and figure out which files are and which
     # are not main articles
+
     foreach my $c (@candidates) {
         if ($notmain{$c->{file}}) {
             $c->{score} = -2;
@@ -1150,19 +1196,25 @@ sub find_main {
             $c->{score} = -1;
         }
     }
+
     # sort by score (highest first), and provide default values
     # to some of the missing fields
-    local($a,$b);
+
+    local($a, $b);
+
     @candidates = sort { $b->{score} <=> $a->{score} } @candidates;
-    my ($def_bibitem,$def_title);
+    my ($def_bibitem, $def_title);
+
     foreach my $c (@candidates) {
         $def_bibitem ||= $c->{bibitem};
         $def_title   ||= $c->{title};
     }
+
     foreach my $c (@candidates) {
         $c->{bibitem} ||= $def_bibitem;
         $c->{title}   ||= $def_title;
     }
+
     if ($debug > 1) {
         use Data::Dumper;
         warn "main paper candidates:\n",
@@ -1193,7 +1245,7 @@ sub cleanup_tmp {
 sub SystemTimeout {
     use POSIX ":sys_wait_h";
     my $timeout = shift;
-    my $command = join(' ',@_);
+    my $command = join(' ', @_);
     my $ret = 256;
     my $timestart = time;
 
@@ -1211,25 +1263,27 @@ sub SystemTimeout {
             $ret = ($? >> 8);
             alarm 0;
         };
+
         if ($@ and $@ =~ /timeout/) {
             # Kill the child and all in its process group.
             warn "$script: command '$command' timed out after $timeout seconds\n";
             # these signals are: (TERM HUP KILL)
             for my $signal (qw(15 1 9)) {
-                last if kill($signal,-$child_pid);
+                last if kill($signal, -$child_pid);
                 sleep 2;
                 waitpid($child_pid,WNOHANG);
                 warn "$script: warning: kill of $child_pid (via $signal) failed...\n";
             }
         } else {
-            warn "$script: command '$command' executed in ",
-            time - $timestart, " seconds\n" if ($debug);
+            warn "$script: command '$command' executed in ", time - $timestart, " seconds\n"
+                if ($debug);
             $ret = 0;
         }
     } else {
         # This is the child.  Give myself a new process group,
         # then run the command.
-        warn "$script: executing: $command\n" if ($debug);
+        warn "$script: executing: $command\n"
+            if ($debug);
         setpgrp($$);
         exec("$command </dev/null >/dev/null 2>/dev/null");
         warn "$script: exec '$command' failed: $!\n";
