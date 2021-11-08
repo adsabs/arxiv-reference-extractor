@@ -1,45 +1,4 @@
 #!/usr/bin/perl
-#
-# $Id: extractrefs.pl,v 1.8 2008/06/03 13:29:35 ads Exp ads $
-#
-# Extracts references from PDF files.
-# Major rewrite after consolidating PDF reference extraction
-# in ADS::References::Document::Parser.
-#
-# $Log: extractrefs.pl,v $
-# Revision 1.8  2008/06/03 13:29:35  ads
-# Introduced timing out of epstopdf via SystemTimeout
-#
-# Revision 1.7  2008/05/13 13:09:03  ads
-# Removed blanks between <r> and reference string; this prevents
-# the refstring from breaking away from the <r> tag and possibly
-# confusing pdftotext into thinking the text is columnized.
-#
-# Revision 1.6  2008/04/15 14:18:29  ads
-# Separated conversion of .eps to .pdf in source tex so that
-# both approaches are attempted.
-# Also corrected PDF retrieval and processing if/when regular
-# latex extraction does not work.
-#
-# Revision 1.5  2008/02/06 14:38:06  ads
-# Now using File::Find to locate all files to be processed
-# (so that files in subdirectories are processed as well).
-#
-# Revision 1.4  2007/12/28 17:55:56  ads
-# Added fix to rewrite eprint codes that have lost the "-" character
-# in them during text extraction via pdftotext (e.g. "astro-ph" may
-# have become "astroph" if the line wraps at the "-").
-#
-# Revision 1.3  2007/10/16 20:54:13  ads
-# Major changes after the upgrade to the arXiv's new teTeX release
-# (version 3), which forces us to move to pdflatex.
-# Reference extraction seems to work better on teh few samples I tried
-# but things may get dicey.  Time will tell.
-#
-# Revision 1.1  2006/03/01 22:21:20  ads
-# Initial revision
-#
-#
 
 use strict;
 use warnings;
