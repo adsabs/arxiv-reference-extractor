@@ -1,43 +1,4 @@
 #!/usr/bin/perl
-#
-# $Id: fulltextharvest.pl,v 1.2 2013/03/15 19:48:30 ads Exp ads $
-#
-# Harvests the fulltext files from export.arxiv.edu
-#
-# Fulltext files are as follows:
-#
-#   multi-file tex, ps or html (.tar.gz)
-#    Content-Encoding: x-gzip
-#    Content-Type: application/x-eprint-tar
-#
-#   single ps (.ps.gz)
-#    Content-Encoding: x-gzip
-#    Content-Type: application/postscript
-#
-#   single html (.html.gz)
-#    Content-Encoding: x-gzip
-#    Content-Type: text/html
-#
-#   single pdf (.pdf)
-#    Content-Type: application/pdf
-#
-#   single tex source (.gz)
-#    Content-Encoding: x-gzip
-#    Content-Type: application/x-eprint
-#
-# AA 10/08/2004
-#
-# Changed on 6/29/05 to use the filename of the redirected request
-# rather than Content-Type and Content-Encoding to decide the file type
-#
-# $Log: fulltextharvest.pl,v $
-# Revision 1.2  2013/03/15 19:48:30  ads
-# Added proper sleep interval between all downloads
-#
-# Revision 1.1  2013/03/15 19:45:48  ads
-# Initial revision
-#
-#
 
 use strict;
 use LWP::UserAgent;
@@ -393,5 +354,3 @@ sub getfile {
     $response->{file} = $nfile;
     return $response;
 }
-
-
