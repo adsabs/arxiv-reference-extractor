@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# A simple wrapper around extractrefs.pl so we can run this 
+# A simple wrapper around extractrefs.pl so we can run this
 # as a one-off process for specific bibcodes
 #
 # Usage: extractrefs.sh [--debug] bibcode_or_arxivid [...]
@@ -61,6 +61,3 @@ for path in $paths; do
     warn "processing fulltext file $fdir/$path"
     echo $path
 done | $bindir/extractrefs.pl $opts
-
-
-

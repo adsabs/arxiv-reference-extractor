@@ -265,13 +265,13 @@ OPTIONS:
   --debug        print debugging information
 The program reads from stdin a table consisting of the fulltext e-print
 file (first column) and optionally its corresponding bibcode (second
-column), accno number (third column), and submission date (fourth column).  
+column), accno number (third column), and submission date (fourth column).
 If a bibcode is not given, one is obtained from bib2accno.list
 
 The fulltext filenames typically are in one of these forms:
    arXiv/0705/0161.tar.gz
    arXiv/0705/0160.pdf
-   math/2006/0604548.tex.gz 
+   math/2006/0604548.tex.gz
 EOF
 ;
 }
@@ -288,7 +288,7 @@ sub process_one_pdf {
 	warn "$script: $id: cannot extract content from $file\n";
 	return 1;
     }
-    
+
     my @references;
     eval {
 	@references = $doc_parser->parse($content);
@@ -296,7 +296,7 @@ sub process_one_pdf {
     if ($@) {
 	warn "$script: $id: error extracting references from pdf file\n";
     } else {
-	warn "$script: $id: found ", scalar(@references), " references\n" 
+	warn "$script: $id: found ", scalar(@references), " references\n"
 	    if ($debug);
     }
     if (scalar(@references) == 0) {
@@ -324,9 +324,9 @@ sub process_one_pdf {
 	return 1;
     }
     print $fh "%R $bibcode\n%Z\n", join("\n",@references), "\n";
-    	
+
     return 0;
-}	
+}
 
 sub process_one_tex {
 
@@ -368,7 +368,7 @@ sub process_one_tex {
 	cleanup_tmp($tmp_dir,1);
 	return 1;
     }
-    warn "$script: $id: Changing to directory: $tmp_dir\n" 
+    warn "$script: $id: Changing to directory: $tmp_dir\n"
 	if ($debug);
     unless(chdir($tmp_dir)) {
 	warn "$script: $id: cannot cd to $tmp_dir: $!";
@@ -397,9 +397,9 @@ sub process_one_tex {
     # Determine a list of files of interest
     use File::Find;
     my @files;
-    find(sub { my $f = $File::Find::name; 
-	       $f =~ s:^\./::; 
-	       push(@files,$f) if (-f $f); 
+    find(sub { my $f = $File::Find::name;
+	       $f =~ s:^\./::;
+	       push(@files,$f) if (-f $f);
 	 }, '.');
 
     if (scalar(@files) == 0) {
@@ -460,9 +460,9 @@ sub process_one_tex {
 	$main->{bibitem} ||= $def_bibitem;
 	next unless (-f $orig);
 	next if ($orig =~ /(psfig)/);
-	warn "$script: $id: Adding markup. Processing: $orig\n" 
+	warn "$script: $id: Adding markup. Processing: $orig\n"
 	    if ($debug);
-	munge_refs($orig,$main->{bibitem},$output_fmt) or 
+	munge_refs($orig,$main->{bibitem},$output_fmt) or
 	    warn "$script: $id: error adding ref markup to file $orig\n";
     }
 
@@ -477,7 +477,7 @@ sub process_one_tex {
 	    my $orig = $main->{file};
 	    next unless (-f $orig);
 	    next if ($orig =~ /(psfig)/);
-	    warn "$script: $id: converting .eps to .pdf in source file $orig\n" 
+	    warn "$script: $id: converting .eps to .pdf in source file $orig\n"
 		if ($debug);
 	    $changed += convertps2pdf($orig);
 	}
@@ -578,7 +578,7 @@ sub get_references {
 	    $texcmmd = ($fmt eq 'tex') ? 'pdftex' :
 		'pdflatex -interaction=nonstopmode';
 	} else {
-	    $texcmmd = ($fmt eq 'tex') ? 'tex' : 
+	    $texcmmd = ($fmt eq 'tex') ? 'tex' :
 		'latex -interaction=nonstopmode';
 	}
 	if ($debug) {
@@ -610,7 +610,7 @@ sub get_references {
 	    warn "$script: $id: going with: $out_file and hoping for the best\n";
 	    $output = $out_file;
 	}
-	    
+
 	if ($output and $output ne $out_file) {
 	    warn "$script: $id: expected output file to be \"$out_file\", ",
 	    "but found file \"$output\"\n";
@@ -645,7 +645,7 @@ sub get_references {
 	}
 
 	if (@references) {
-	    warn "$script: $id: found ", scalar(@references), 
+	    warn "$script: $id: found ", scalar(@references),
 	    " refs in file $text_output\n";
 	    last;
 	} else {
@@ -694,7 +694,7 @@ sub clean {
 	$input =~ s/^\d+?(1\.)/$1/;
 	$input =~ s/^\d\d+\s*([A-Z])/$1/;
 	$input =~ s/^(0|[2-9])\s*([A-Z])/$2/;
-	
+
 	if ($input =~ /^([\[\(])\s*\d+\s*([\]\)])/) {
 	    $rtype = 2; # [1] Author, I. 2004, foo
 	} elsif ($input =~ /^([\[\(])\s*[\w.]{1,10}\s*([\]\)])/) {
@@ -702,13 +702,13 @@ sub clean {
 	}  elsif ($input =~ /^\d+(\W+)/) {
 	    $rtype = 1; # 1. Author, I. 2004, foo  -- or -- 1] Author, I. 2004, foo
 	};
-	
+
     } else {
 	my $type = $rtype;
     };
 
     $input =~ s/\s*-\s*/-/g;
-    
+
     if ($type == 2) {
 	$input =~ s/^\d+\s*(\[\s*\d+\s*\])/$1/;
     } elsif ($type == 1) {
@@ -716,12 +716,12 @@ sub clean {
     } else {
 	$input =~ s/^\d+\s*([a-z])/$1/i;
     };
-    
+
     $input =~ s/\\([A-Z])(?=[^\"]+\")/\"$1/g;
-    
+
     $input =~ s/\s\s+/ /g;
     $input =~ s/ ,/,/g;
-    
+
     return $input;
 }
 
@@ -749,7 +749,7 @@ sub find_pdf_references {
 	$r =~ s/^\s+|\s+$//g;
 	push(@references,"$r\n");
     }
-    
+
     return @references;
 }
 
@@ -762,7 +762,7 @@ sub find_dvi_references {
     # New we're going to process the ASCII file with DVI commands
     my @references = ();
     my $reference = '';
-    
+
     open(my $dh,$textfile);
     unless ($dh) {
 	warn "$script: cannot open file $textfile!\n";
@@ -779,25 +779,25 @@ sub find_dvi_references {
 	    push(@references, "$reference\n");
 	    last;
 	}
-	    
+
 	if (/\bcitation_open\b/) {
 	    $reference = &clean($reference,$title);
 	    push(@references, "$reference\n");
 	    $reference = '';
 	    next;
 	}
-	    
+
 	next unless (/^\[/);
 	next if (/^\[(References|REFERENCES|Bibliography|BIBLIOGRAPHY)\]$/x);
 	chomp;
 	s/^\[//;
 	s/\]$//;
-	    
+
 	if ($reference =~ /-\s*$/) {
 	    s/^\s+//;
 	    # it looks like Edwin was trying to catch
 	    # the tail-end of preprint codes here,
-	    # but why is he overriding the reference?  
+	    # but why is he overriding the reference?
 	    # I'm assuming it was a typo -- AA 1/13/06
 	    if (/^[a-z]+[ \/]+\d{7}/){
 		# $reference = $_;
@@ -811,7 +811,7 @@ sub find_dvi_references {
 	    $reference .= $_;
 	}
     }
-    
+
     return @references;
 }
 
@@ -839,13 +839,13 @@ sub munge_refs {
     #   2. prevent page breaks in the middle of a reference by
     #      having each one start at the beginning of a page
     #   3. disable hyphenation as much as possible
-    my $opnref = ($format eq 'pdf') ? '$<$references$>$' : 
+    my $opnref = ($format eq 'pdf') ? '$<$references$>$' :
 	'\special{ref_open} ';
-    my $clsref = ($format eq 'pdf') ? '$<$/references$>$' : 
+    my $clsref = ($format eq 'pdf') ? '$<$/references$>$' :
 	' \special{ref_close}';
-    my $opntag = ($format eq 'pdf') ? '\newpage\onecolumn\section*{}$<$r$>$\sloppy\raggedright' : 
+    my $opntag = ($format eq 'pdf') ? '\newpage\onecolumn\section*{}$<$r$>$\sloppy\raggedright' :
 	'\special{citation_open} ';
-    my $clstag = ($format eq 'pdf') ? '$<$/r$>$' : 
+    my $clstag = ($format eq 'pdf') ? '$<$/r$>$' :
 	' \special{citation_close}';
     # my $convertps = ($format eq 'pdf') ? 1 : 0;
 
@@ -868,7 +868,7 @@ sub munge_refs {
 	last if (/\\begin\s*\{(chapthebibliography|thebibliography|references)\}/i);
     }
 
-    # check if we've gotten to the end of the file without finding 
+    # check if we've gotten to the end of the file without finding
     # the start of the reference section, in which case, reopen the file again
     # and try to tag references
     if (eof($ofh) and $orig =~ /\.(bib|bbl)$/) {
@@ -886,7 +886,7 @@ sub munge_refs {
 	    return 0;
 	}
     }
-    
+
     my $lastref = '';
     my $tag = '';
     my $type = '';
@@ -901,9 +901,9 @@ sub munge_refs {
 	    print $nfh "\n$_\n";
 	    last;
 	}
-		    
+
 	s/\b(\w+\s*)--(\s*\w+)\b/$1-$2/g;
-	
+
 	if (s/^\s*\\(bibitem|reference|rn|rf|rfprep|item|\Q$bibitem\E)\b//i) {
 	    unless ($tag) {
 		$tag = $1;
@@ -935,13 +935,13 @@ sub munge_refs {
 
     print $nfh "\n";
     print $nfh (<$ofh>);
-    
+
     close($ofh);
     close($nfh);
 
-    warn "$script: tagged $count references in file $orig\n" 
+    warn "$script: tagged $count references in file $orig\n"
 	if ($debug);
-    
+
     if (system("mv -f \"$newfile\" \"$orig\"")) {
 	warn "$script: error copying file $newfile to $orig: $@";
 	return 0;
@@ -1026,7 +1026,7 @@ sub tag_ref {
 
     if ($type eq 'bibitem') {
 	# can have one of two forms:
-	# \bibitem{bar} 
+	# \bibitem{bar}
 	# \bibitem[foo]{bar}
 	($arg,$rest,$sep) = extract_bracketed($text,'[]');
 	if ($arg) {
@@ -1058,13 +1058,13 @@ sub tag_ref {
 
 # removes accents that trip up pdftotext (as of v. 3.02);
 # recipe based on http://www.giss.nasa.gov/tools/latex/ltx-401.html
-#    *  \`{o} produces a grave accent, ò
-#    * \'{o} produces an acute accent, ó
-#    * \^{o} produces a circumflex, ô
-#    * \"{o} produces an umlaut or dieresis, ö
+#    *  \`{o} produces a grave accent
+#    * \'{o} produces an acute accent
+#    * \^{o} produces a circumflex
+#    * \"{o} produces an umlaut or dieresis
 #    * \H{o} produces a long Hungarian umlaut
-#    * \~{o} produces a tilde, õ
-#    * \c{c} produces a cedilla, ç
+#    * \~{o} produces a tilde
+#    * \c{c} produces a cedilla
 #    * \={o} produces a macron accent (a bar over the letter)
 #    * \b{o} produces a bar under the letter
 #    * \.{o} produces a dot over the letter
@@ -1086,7 +1086,7 @@ sub remove_diacritics {
 }
 
 # given a list of tex files, finds which one is the main one;
-# we do this by analyzing the tex/latex commands in it and 
+# we do this by analyzing the tex/latex commands in it and
 # seeing if one file includes some other one
 sub find_main {
     my @candidates;
@@ -1206,7 +1206,7 @@ sub find_main {
     }
     if ($debug > 1) {
 	use Data::Dumper;
-	warn "main paper candidates:\n", 
+	warn "main paper candidates:\n",
 	Data::Dumper->Dump([ @candidates ]);
     }
 
@@ -1263,7 +1263,7 @@ sub SystemTimeout {
 		warn "$script: warning: kill of $child_pid (via $signal) failed...\n";
 	    }
 	} else {
-	    warn "$script: command '$command' executed in ", 
+	    warn "$script: command '$command' executed in ",
 	    time - $timestart, " seconds\n" if ($debug);
 	    $ret = 0;
 	}
@@ -1275,7 +1275,7 @@ sub SystemTimeout {
 	exec("$command </dev/null >/dev/null 2>/dev/null");
 	warn "$script: exec '$command' failed: $!\n";
     }
-	
+
     return $ret;
 }
 
@@ -1294,6 +1294,6 @@ sub GetSplitEprints {
 	$re =~ s/\-//;
 	$hash{$re} = $cat;
     }
-    
+
     return %hash;
 }
