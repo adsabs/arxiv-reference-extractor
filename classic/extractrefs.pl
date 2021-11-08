@@ -1035,9 +1035,9 @@ sub remove_diacritics {
     my $string = shift;
 
     # M{\"u}ller
-    $string =~ s/{\\[\`\'\^\"\~\=\.]([a-zA-Z])}/$1/g;
+    $string =~ s/\{\\[\`\'\^\"\~\=\.]([a-zA-Z])\}/$1/g;
     # M\"{u}ller
-    $string =~ s/\\[\`\'\^\"\~\=\.Hcbduvt]{([a-zA-Z])}/$1/g;
+    $string =~ s/\\[\`\'\^\"\~\=\.Hcbduvt]\{([a-zA-Z])\}/$1/g;
     # M\"uller
     $string =~ s/\\[\`\'\^\"\~\=\.]([a-zA-Z])/$1/g;
 
@@ -1124,7 +1124,7 @@ sub find_main {
 		$bibitem = $1 unless ($bibitem);
 	    } elsif (/^\s*\\def\{?\\(.+?)\{\\bibitem\b/i) {
 		$bibitem = $1 unless ($bibitem);
-	    } elsif (/^s*\\input{\s*(\S*?)\s*}/ or /^s*\\input\s+(\S*?)/) {
+	    } elsif (/^s*\\input\{\s*(\S*?)\s*\}/ or /^s*\\input\s+(\S*?)/) {
 		# if the file is included by another one, most likely
 		# is not the main tex/latex source
 		$notmain{$1}++;
