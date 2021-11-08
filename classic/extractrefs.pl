@@ -1124,7 +1124,7 @@ sub find_main {
 		$bibitem = $1 unless ($bibitem);
 	    } elsif (/^\s*\\def\{?\\(.+?)\{\\bibitem\b/i) {
 		$bibitem = $1 unless ($bibitem);
-	    } elsif (/^s*\\input\{\s*(\S*?)\s*\}/ or /^s*\\input\s+(\S*?)/) {
+	    } elsif (/^s*\\input\{\s*(\S*?)\s*\}/ || /^s*\\input\s+(\S*?)/) {
 		# if the file is included by another one, most likely
 		# is not the main tex/latex source
 		$notmain{$1}++;
