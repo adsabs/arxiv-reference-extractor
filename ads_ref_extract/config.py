@@ -7,6 +7,7 @@ from pathlib import Path
 
 __all__ = ["Config"]
 
+
 class Config(object):
     logs_base = None
     fulltext_base = None
@@ -19,16 +20,16 @@ class Config(object):
         Create a new Config with default paths set for ADS infra.
         """
         inst = cls()
-        inst.logs_base = Path('/proj/ads/abstracts/sources/ArXiv/log')
+        inst.logs_base = Path("/proj/ads/abstracts/sources/ArXiv/log")
 
         # NB: this must end in the string `fulltext` in order for some of the
         # log-parsing code to work correctly.
-        inst.fulltext_base = Path('/proj/ads/abstracts/sources/ArXiv/fulltext')
+        inst.fulltext_base = Path("/proj/ads/abstracts/sources/ArXiv/fulltext")
 
         # NB: These must be the same but with `sources` replaced with
         # `resolved`.
-        inst.target_refs_base = Path('/proj/ads/references/sources')
-        inst.resolved_refs_base = Path('/proj/ads/references/resolved')
+        inst.target_refs_base = Path("/proj/ads/references/sources")
+        inst.resolved_refs_base = Path("/proj/ads/references/resolved")
         return inst
 
     def classic_session_log_path(self, session_id):
@@ -50,4 +51,4 @@ class Config(object):
             return p
 
         # Older sessions are archived by year.
-        return self.logs_base / session_id.split('-')[0] / session_id
+        return self.logs_base / session_id.split("-")[0] / session_id
