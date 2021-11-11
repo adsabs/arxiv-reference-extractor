@@ -64,10 +64,14 @@ class ClassicSessionAnalytics(object):
     "The total number of reference-text items emitted in the whole session."
 
     n_good_refs = None
-    "The total number of references that were resolved to bibcodes with confidence, in the whole session."
+    """The total number of references that were resolved to bibcodes with
+    confidence, in the whole session. This may be None if the analytics
+    computation was configured to not check the "resolved" files."""
 
     n_guess_refs = None
-    "The total number of references that were resolved to bibcode guesses, in the whole session."
+    """The total number of references that were resolved to bibcode guesses, in
+    the whole session. This may be None if the analytics computation was
+    configured to not check the "resolved" files."""
 
     def __str__(self):
         return f"""Classic session {self.session_id}:
@@ -80,33 +84,64 @@ class ClassicSessionAnalytics(object):
     n_guess_refs = {self.n_guess_refs}"""
 
     def csv_header(self):
-        return [
+        h = [
             "session_id",
             "items",
             "new_items",
             "source_items",
             "emitted_items",
             "reftexts",
-            "good_refs",
-            "guess_refs",
         ]
 
+        if self.n_good_refs is not None:
+            h += [
+                "good_refs",
+                "guess_refs",
+            ]
+
+        return h
+
     def as_csv_row(self):
-        return [
+        r = [
             self.session_id,
             str(self.n_items),
             str(self.n_new_items),
             str(self.n_source_items),
             str(self.n_emitted_items),
             str(self.n_reftexts),
-            str(self.n_good_refs),
-            str(self.n_guess_refs),
         ]
 
+        if self.n_good_refs is not None:
+            r += [
+                str(self.n_good_refs),
+                str(self.n_guess_refs),
+            ]
 
-def analyze_session(session_id, config, logger=default_logger):
+        return r
+
+
+def analyze_session(
+    session_id,
+    config,
+    logger=default_logger,
+    reconstruct_targets=False,
+    check_resolved=True,
+):
     """
     Parse log files of a single processing session.
+
+    If `reconstruct_targets` is set to True, we'll reconstruct the paths of the
+    "target ref" files that contain the reference text extracted from each
+    submission. Otherwise, we'll use the path contained in the `extractrefs.out`
+    file. You might want to use this option if the reference-extraction run was
+    done in a Docker container where the logged paths aren't valid on the host
+    system.
+
+    If `check_resolved` is set to False, we won't look at the "resolved" files
+    in which reference text has been translated to bibcodes. You might want to
+    use this if the resolution step hasn't been performed for the processing
+    session that you are analyzing.
+
     """
     log_dir = config.classic_session_log_path(session_id)
 
@@ -145,7 +180,7 @@ def analyze_session(session_id, config, logger=default_logger):
 
     n_logged = 0
     n_emitted = 0
-    raw_paths = {}
+    raw_paths = set()
 
     er_path = log_dir / "extractrefs.out"
 
@@ -160,16 +195,27 @@ def analyze_session(session_id, config, logger=default_logger):
             item_stem, item_ext = _split_item_path(bits[0])
 
             if len(bits) > 1:
-                raw_paths[item_stem] = bits[1]
+                if reconstruct_targets:
+                    raw_paths.add(config.target_refs_base / (item_stem + ".raw"))
+                else:
+                    raw_paths.add(bits[1])
                 n_emitted += 1
 
     # Next: analyze items that had reftext extracted
+    #
+    # NOTE: if some of these items were later updated, there might be some
+    # inconsistencies between what was encountered during this particular
+    # processing session and the state files on disk. Not sure if we should try
+    # to do anything about that.
 
     n_reftexts = 0
     n_good_refs = 0
     n_guess_refs = 0
 
-    for raw_path in raw_paths.values():
+    if not check_resolved:
+        n_good_refs = n_guess_refs = None
+
+    for raw_path in raw_paths:
         # "reftext" extracted
         #
         # We have at least one case
@@ -197,6 +243,9 @@ def analyze_session(session_id, config, logger=default_logger):
             continue
 
         # Resolved
+
+        if not check_resolved:
+            continue
 
         resolved_path = raw_path.replace("sources/", "resolved/") + ".result"
 
