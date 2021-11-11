@@ -4,6 +4,10 @@ extraction session.
 """
 
 import logging
+import os
+from pathlib import Path
+import shutil
+import subprocess
 
 __all__ = ["ClassicSessionAnalytics", "analyze_session"]
 
@@ -233,3 +237,104 @@ def analyze_session(session_id, config, logger=default_logger):
     info.n_good_refs = n_good_refs
     info.n_guess_refs = n_guess_refs
     return info
+
+
+class ClassicSessionReprocessor(object):
+    """
+    Helper class for reprocessing previously-processed sessions using a
+    Dockerized version of the "classic" extractor. In principle this could be
+    one big function call with a million arguments, but there are a lot of
+    options and it's ergonomically helpful to have a class that lets you set
+    them all up gradually.
+    """
+
+    image_name = None
+    "The name of the Docker image with the classic-style reference extractor."
+
+    config = None
+    "The data path configuration."
+
+    logs_out_base = None
+    "The base directory for output log files."
+
+    def __init__(self, config=None, image_name=None, logs_out_base=None):
+        if config is not None:
+            self.config = config
+
+        if image_name is not None:
+            self.image_name = image_name
+
+        if logs_out_base is not None:
+            self.logs_out_base = Path(logs_out_base)
+
+    def _validate(self):
+        if self.image_name is None:
+            raise Exception("must set `image_name` before reprocessing")
+        if self.config is None:
+            raise Exception("must set `config` before reprocessing")
+        if str(self.config.target_refs_base).startswith("/proj/ads/"):
+            raise Exception(
+                f"refusing to reprocess into target ref basedir `{self.config.target_refs_base}`"
+            )
+        if self.logs_out_base is None:
+            raise Exception("must set `logs_out_base` before reprocessing")
+
+    def reprocess(self, session_id):
+        self._validate()
+
+        argv = [
+            "docker",
+            "run",
+            "--rm",
+            "-i",
+            "--name",
+            f"arxiv_refextract_repro_{session_id}",
+            "-v",
+            f"{self.config.abstracts_config_base}:/proj/ads/abstracts/config:ro,Z",
+            "-v",
+            f"{self.config.abstracts_links_base}:/proj/ads/abstracts/links:ro,Z",
+            "-v",
+            f"{self.config.fulltext_base}:/virtual_abstracts/sources/ArXiv/fulltext:ro,Z",
+            "-v",
+            f"{self.config.target_refs_base}:/refs_out:rw,Z",
+            "-e",
+            "ADS_ABSTRACTS",
+            "-e",
+            "ADS_REFERENCES",
+            self.image_name,
+            "--pbase",
+            "/virtual_abstracts/sources/ArXiv/fulltext",
+            "--tbase",
+            "/refs_out",
+            "--force",
+        ]
+
+        # Setup: output log file
+
+        year = session_id.split("-")[0]
+        logs_out_dir = self.logs_out_base / year / session_id
+        os.makedirs(logs_out_dir, exist_ok=True)
+        out_log_path = logs_out_dir / "extractrefs.out"
+
+        # Setup: input processing specification. Copy the source file to the output
+        # directory to make it simple to do analytics on later.
+
+        source_input_path = (
+            self.config.classic_session_log_path(session_id) / "fulltextharvest.out"
+        )
+        input_path = logs_out_dir / "fulltextharvest.out"
+        shutil.copyfile(source_input_path, input_path)
+
+        # Setup: inner environment. (This is mostly paranoia to avoid writing to
+        # the production filesystem.)
+
+        env = dict(os.environ)
+        env["ADS_ABSTRACTS"] = "/virtual_abstracts"
+        env["ADS_REFERENCES"] = "/virtual_references"
+
+        # Ready to go!
+
+        with open(input_path, "rb") as f_in, open(out_log_path, "wb") as f_out:
+            subprocess.check_call(
+                argv, shell=False, close_fds=True, stdin=f_in, stdout=f_out, env=env
+            )

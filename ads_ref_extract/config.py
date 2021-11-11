@@ -13,6 +13,8 @@ class Config(object):
     fulltext_base = None
     target_refs_base = None
     resolved_refs_base = None
+    abstracts_config_base = None
+    abstracts_links_base = None
 
     @classmethod
     def new_defaults(cls):
@@ -30,6 +32,9 @@ class Config(object):
         # `resolved`.
         inst.target_refs_base = Path("/proj/ads/references/sources")
         inst.resolved_refs_base = Path("/proj/ads/references/resolved")
+
+        inst.abstracts_config_base = Path("/proj/ads/abstracts/config")
+        inst.abstracts_links_base = Path("/proj/ads/abstracts/links")
         return inst
 
     def classic_session_log_path(self, session_id):
