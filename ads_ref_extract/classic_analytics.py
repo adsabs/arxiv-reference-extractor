@@ -3,6 +3,7 @@ Performance analytics on the logfiles produced by a "classic" Arxiv reference
 extraction session.
 """
 
+import difflib
 import logging
 import os
 from pathlib import Path
@@ -42,6 +43,26 @@ def _split_item_path(item_path):
         ext = ""
 
     return (stem, ext)
+
+
+def _target_refs_for_session(extractrefs_out_path, reconstruct_targets, config, logger):
+    with open(extractrefs_out_path, "rt") as er:
+        for line in er:
+            bits = line.strip().split()
+            if not bits:
+                logger.warn(f"unexpected empty line in `{extractrefs_out_path}`")
+                continue
+
+            item_stem, item_ext = _split_item_path(bits[0])
+
+            if len(bits) < 2:
+                p = None
+            elif reconstruct_targets:
+                p = config.target_refs_base / (item_stem + ".raw")
+            else:
+                p = Path(bits[1])
+
+            yield item_stem, item_ext, p
 
 
 class ClassicSessionAnalytics(object):
@@ -178,28 +199,11 @@ def analyze_session(
 
     # Next: analyze results of that update
 
-    n_logged = 0
-    n_emitted = 0
-    raw_paths = set()
-
-    er_path = log_dir / "extractrefs.out"
-
-    with open(er_path, "rt") as er:
-        for line in er:
-            bits = line.strip().split()
-            if not bits:
-                logger.warn(f"unexpected empty line in `{er_path}`")
-                continue
-
-            n_logged += 1
-            item_stem, item_ext = _split_item_path(bits[0])
-
-            if len(bits) > 1:
-                if reconstruct_targets:
-                    raw_paths.add(config.target_refs_base / (item_stem + ".raw"))
-                else:
-                    raw_paths.add(bits[1])
-                n_emitted += 1
+    tref_info = _target_refs_for_session(
+        log_dir / "extractrefs.out", reconstruct_targets, config, logger
+    )
+    raw_paths = [t[2] for t in tref_info if t[2] is not None]
+    n_emitted = len(raw_paths)
 
     # Next: analyze items that had reftext extracted
     #
@@ -286,6 +290,85 @@ def analyze_session(
     info.n_good_refs = n_good_refs
     info.n_guess_refs = n_guess_refs
     return info
+
+
+def compare_reftexts(session_id, A_config, B_config, logger=default_logger):
+    er1 = A_config.classic_session_log_path(session_id) / "extractrefs.out"
+    er2 = B_config.classic_session_log_path(session_id) / "extractrefs.out"
+
+    A_results = dict(
+        (t[0], t[1:]) for t in _target_refs_for_session(er1, True, A_config, logger)
+    )
+    B_results = dict(
+        (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger)
+    )
+
+    stems = set(A_results.keys())
+    stems.update(B_results.keys())
+    stems = sorted(stems)
+
+    n_items_same = 0
+    n_items_diff = 0
+    n_reftexts_plus = 0
+    n_reftexts_minus = 0
+
+    for stem in stems:
+        A_ext, A_path = A_results.get(stem, ("missing", None))
+        B_ext, B_path = B_results.get(stem, ("missing", None))
+
+        if A_path is None:
+            A_lines = []
+            A_desc = "(missing)"
+        else:
+            with open(A_path, "rb") as f:
+                A_lines = f.readlines()[2:]
+            A_desc = str(len(A_lines))
+
+        if B_path is None:
+            B_lines = []
+            B_desc = "(missing)"
+        else:
+            with open(B_path, "rb") as f:
+                B_lines = f.readlines()[2:]
+            B_desc = str(len(B_lines))
+
+        diffout = list(difflib.diff_bytes(difflib.unified_diff, A_lines, B_lines, n=0))
+
+        if not len(diffout) and A_ext == B_ext:
+            n_items_same += 1
+            continue
+
+        n_items_diff += 1
+
+        if A_ext == B_ext:
+            ext = A_ext
+        else:
+            ext = f"{A_ext} => {B_ext}"
+
+        yield f"~~~ {stem}({ext}): {A_desc} => {B_desc}\n"
+
+        for line in diffout:
+            if (
+                line.startswith(b"---")
+                or line.startswith(b"+++")
+                or line.startswith(b"@@")
+            ):
+                continue
+
+            if line.startswith(b"+"):
+                n_reftexts_plus += 1
+
+            if line.startswith(b"-"):
+                n_reftexts_minus += 1
+
+            yield line.decode("utf-8", "backslashreplace")
+
+    yield "\n"
+    yield f">>> {n_items_same} unchanged items\n"
+    yield f">>> {n_items_diff} changed items\n"
+    yield f">>> {n_reftexts_plus} new reftext lines\n"
+    yield f">>> {n_reftexts_minus} removed reftext lines\n"
+    yield f">>> {n_reftexts_plus - n_reftexts_minus} net delta reftext lines\n"
 
 
 class ClassicSessionReprocessor(object):
