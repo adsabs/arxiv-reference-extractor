@@ -46,6 +46,12 @@ def _split_item_path(item_path):
 
 
 def _target_refs_for_session(extractrefs_out_path, reconstruct_targets, config, logger):
+    """
+    Yields sequence of ``(item_stem, item_ext, target_refs_path)``, eg:
+
+    ``("arXiv/1905/03871", "tex", "/a/ads/data/refout/sources/arXiv/1905/03871.raw")``
+    """
+
     with open(extractrefs_out_path, "rt") as er:
         for line in er:
             bits = line.strip().split()
@@ -470,3 +476,128 @@ class ClassicSessionReprocessor(object):
             subprocess.check_call(
                 argv, shell=False, close_fds=True, stdin=f_in, stdout=f_out, env=env
             )
+
+
+def _maybe_load_raw_file(path, logger):
+    MAX_RS_LEN = 512
+    refstrings = set()
+
+    if path is None:
+        return refstrings
+
+    before_refs = True
+
+    with open(path, "rb") as f:
+        for line in f:
+            if before_refs:
+                if line.startswith(b"%Z"):
+                    before_refs = False
+            else:
+                rs = line.strip().decode("utf-8", "replace")
+
+                if len(rs) > MAX_RS_LEN:
+                    logger.debug(
+                        f'truncating reference string "{rs[:20]}..." in `{path}`'
+                    )
+                    rs = rs[:MAX_RS_LEN]
+
+                refstrings.add(rs)
+
+    return refstrings
+
+
+class ResolveComparison(object):
+    stem = None
+    A_ext = None
+    B_ext = None
+    score_delta = None
+    lost_resolutions = None
+
+    def __init__(self):
+        self.lost_resolutions = set()
+
+    def __str__(self):
+        return f"""Resolve comparison {self.stem}:
+    exts = {self.A_ext}, {self.B_ext}
+    score_delta = {self.score_delta}
+    #lost = {len(self.lost_resolutions)}"""
+
+
+def compare_resolved(
+    session_id, A_config, B_config, rcache, logger=default_logger, **kwargs
+):
+    # First, figure out which items in the two sessions were resolved.
+
+    er1 = A_config.classic_session_log_path(session_id) / "extractrefs.out"
+    er2 = B_config.classic_session_log_path(session_id) / "extractrefs.out"
+
+    A_results = dict(
+        (t[0], t[1:]) for t in _target_refs_for_session(er1, True, A_config, logger)
+    )
+    B_results = dict(
+        (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger)
+    )
+
+    stems = set(A_results.keys())
+    stems.update(B_results.keys())
+
+    # Now figure out the diffs for each item and build up a list of reference
+    # strings to resolve. By only looking at changed items, we massively
+    # decrease the number of resolutions we need to perform (hopefully).
+    #
+    # We batch up all of the references to resolve in order to make optimal use
+    # of the resolver microservice API.
+
+    A_uniques = {}
+    B_uniques = {}
+    to_resolve = set()
+    results = {}
+
+    for stem in stems:
+        A_ext, A_path = A_results.get(stem, (None, None))
+        B_ext, B_path = B_results.get(stem, (None, None))
+
+        A_refstrings = _maybe_load_raw_file(A_path, logger)
+        B_refstrings = _maybe_load_raw_file(B_path, logger)
+
+        A_uniques[stem] = A_refstrings - B_refstrings
+        B_uniques[stem] = B_refstrings - A_refstrings
+        to_resolve.update(B_refstrings ^ A_refstrings)
+
+        info = ResolveComparison()
+        info.stem = stem
+        info.A_ext = A_ext
+        info.B_ext = B_ext
+
+        results[stem] = info
+
+    # Resolve all the things!
+
+    resolved = rcache.resolve(to_resolve, **kwargs)
+
+    # Postprocess analytics
+
+    for stem in stems:
+        info = results[stem]
+        A_score = 0
+        B_score = 0
+        B_bibcodes = set()
+
+        for rs in B_uniques[stem]:
+            ri = resolved[rs]
+            B_score += ri.score
+
+            if ri.score > 0.5:
+                B_bibcodes.add(ri.bibcode)
+
+        for rs in A_uniques[stem]:
+            ri = resolved[rs]
+            A_score += ri.score
+
+            if ri.score > 0.5 and ri.bibcode not in B_bibcodes:
+                # Oh no, did we lose a good reference???
+                info.lost_resolutions.add(rs)
+
+        info.score_delta = B_score - A_score
+
+    return results
