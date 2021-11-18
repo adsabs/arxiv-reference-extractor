@@ -87,8 +87,8 @@ class ClassicSessionAnalytics(object):
     n_emitted_items = None
     "The number of items for which reference information was emitted."
 
-    n_reftexts = None
-    "The total number of reference-text items emitted in the whole session."
+    n_refstrings = None
+    "The total number of reference-string items emitted in the whole session."
 
     n_good_refs = None
     """The total number of references that were resolved to bibcodes with
@@ -106,7 +106,7 @@ class ClassicSessionAnalytics(object):
     n_new_items = {self.n_new_items}
     n_source_items = {self.n_source_items}
     n_emitted_items = {self.n_emitted_items}
-    n_reftexts = {self.n_reftexts}
+    n_refstrings = {self.n_refstrings}
     n_good_refs = {self.n_good_refs}
     n_guess_refs = {self.n_guess_refs}"""
 
@@ -117,7 +117,7 @@ class ClassicSessionAnalytics(object):
             "new_items",
             "source_items",
             "emitted_items",
-            "reftexts",
+            "refstrings",
         ]
 
         if self.n_good_refs is not None:
@@ -135,7 +135,7 @@ class ClassicSessionAnalytics(object):
             str(self.n_new_items),
             str(self.n_source_items),
             str(self.n_emitted_items),
-            str(self.n_reftexts),
+            str(self.n_refstrings),
         ]
 
         if self.n_good_refs is not None:
@@ -211,14 +211,14 @@ def analyze_session(
     raw_paths = [t[2] for t in tref_info if t[2] is not None]
     n_emitted = len(raw_paths)
 
-    # Next: analyze items that had reftext extracted
+    # Next: analyze items that had refstrings extracted
     #
     # NOTE: if some of these items were later updated, there might be some
     # inconsistencies between what was encountered during this particular
     # processing session and the state files on disk. Not sure if we should try
     # to do anything about that.
 
-    n_reftexts = 0
+    n_refstrings = 0
     n_good_refs = 0
     n_guess_refs = 0
 
@@ -226,7 +226,7 @@ def analyze_session(
         n_good_refs = n_guess_refs = None
 
     for raw_path in raw_paths:
-        # "reftext" extracted
+        # "refstrings" were extracted.
         #
         # We have at least one case
         # (/proj/ads/references/sources/arXiv/2111/05148.raw) where this file is
@@ -240,7 +240,7 @@ def analyze_session(
 
                 for line in raw_refs:
                     if line.strip():
-                        n_reftexts += 1
+                        n_refstrings += 1
         except FileNotFoundError:
             logger.warn(
                 f"unexpected missing ref target file `{raw_path}` for Arxiv session `{session_id}`"
@@ -292,13 +292,13 @@ def analyze_session(
     info.n_new_items = n_new
     info.n_source_items = n_source
     info.n_emitted_items = n_emitted
-    info.n_reftexts = n_reftexts
+    info.n_refstrings = n_refstrings
     info.n_good_refs = n_good_refs
     info.n_guess_refs = n_guess_refs
     return info
 
 
-def compare_reftexts(session_id, A_config, B_config, logger=default_logger):
+def compare_refstrings(session_id, A_config, B_config, logger=default_logger):
     er1 = A_config.classic_session_log_path(session_id) / "extractrefs.out"
     er2 = B_config.classic_session_log_path(session_id) / "extractrefs.out"
 
@@ -315,8 +315,8 @@ def compare_reftexts(session_id, A_config, B_config, logger=default_logger):
 
     n_items_same = 0
     n_items_diff = 0
-    n_reftexts_plus = 0
-    n_reftexts_minus = 0
+    n_refstrings_plus = 0
+    n_refstrings_minus = 0
 
     for stem in stems:
         A_ext, A_path = A_results.get(stem, ("missing", None))
@@ -362,19 +362,19 @@ def compare_reftexts(session_id, A_config, B_config, logger=default_logger):
                 continue
 
             if line.startswith(b"+"):
-                n_reftexts_plus += 1
+                n_refstrings_plus += 1
 
             if line.startswith(b"-"):
-                n_reftexts_minus += 1
+                n_refstrings_minus += 1
 
             yield line.decode("utf-8", "backslashreplace")
 
     yield "\n"
     yield f">>> {n_items_same} unchanged items\n"
     yield f">>> {n_items_diff} changed items\n"
-    yield f">>> {n_reftexts_plus} new reftext lines\n"
-    yield f">>> {n_reftexts_minus} removed reftext lines\n"
-    yield f">>> {n_reftexts_plus - n_reftexts_minus} net delta reftext lines\n"
+    yield f">>> {n_refstrings_plus} new refstring lines\n"
+    yield f">>> {n_refstrings_minus} removed refstring lines\n"
+    yield f">>> {n_refstrings_plus - n_refstrings_minus} net delta refstring lines\n"
 
 
 class ClassicSessionReprocessor(object):
