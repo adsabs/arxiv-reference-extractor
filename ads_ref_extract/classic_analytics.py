@@ -257,7 +257,7 @@ def analyze_session(
         if not check_resolved:
             continue
 
-        resolved_path = raw_path.replace("sources/", "resolved/") + ".result"
+        resolved_path = str(raw_path).replace("sources/", "resolved/") + ".result"
 
         try:
             with open(resolved_path, "rb") as resolved_refs:
