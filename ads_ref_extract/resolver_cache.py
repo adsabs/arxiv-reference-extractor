@@ -22,7 +22,7 @@ def _get_default_api_token():
     return os.environ["ADS_DEV_KEY"]
 
 
-def _resolve_references(refstrings, api_token=None):
+def _resolve_references(refstrings, api_token, logger):
     """
     Use the reference resolver service to resolve references. Production has
     better approaches, but we use this for testing reprocessing runs.
@@ -47,25 +47,39 @@ def _resolve_references(refstrings, api_token=None):
 
     BATCH_SIZE_LIMIT = 16
 
-    if api_token is None:
-        api_token = _get_default_api_token()
-
     def resolve_batch(references):
         """
         The resolver service accepts up to 16 references at at time.
+
+        We get 502 Bad Gateway errors often enough that it's worth automating
+        retries when they happen.
         """
-        payload = {"reference": references}
-        response = requests.post(
-            url="https://api.adsabs.harvard.edu/v1/reference/text",
-            headers={
-                "Authorization": "Bearer " + api_token,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            data=json.dumps(payload),
-        )
+
+        data = json.dumps({"reference": references})
+        headers = {
+            "Authorization": "Bearer " + api_token,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+        for _attempt in range(5):
+            response = requests.post(
+                url="https://api.adsabs.harvard.edu/v1/reference/text",
+                headers=headers,
+                data=data,
+            )
+
+            if response.status_code == 502:
+                logger.warn(
+                    f"retrying resolver query after error {response.status_code}"
+                )
+                continue
+
+            response.raise_for_status()
+            return json.loads(response.content)["resolved"]
+
         response.raise_for_status()
-        return json.loads(response.content)["resolved"]
+        raise Exception("unreachable")
 
     batch = []
 
@@ -114,13 +128,15 @@ class ResolverCache(object):
         return ResolvedRef(bibcode, score)
 
     def _save(self, refstring, resolver_info):
-        score = resolver_info["score"]
+        # The score should be a float already, but I got a crash once
+        # indicating that it wasn't.
+        score = float(resolver_info["score"])
         bibcode = resolver_info["bibcode"]
         packed = f"{score}/{bibcode}"
         self._handle[refstring.encode("utf-8")] = packed.encode("utf-8")
         return ResolvedRef(bibcode, score)
 
-    def resolve(self, refstrings, logger=default_logger, no_rpc=False):
+    def resolve(self, refstrings, logger=default_logger, api_token=None, no_rpc=False):
         """
         Resolve a batch of reference strings.
 
@@ -135,6 +151,9 @@ class ResolverCache(object):
 
         resolved = {}
         todo = set()
+
+        if api_token is None:
+            api_token = _get_default_api_token()
 
         for rs in refstrings:
             info = self._get(rs)
@@ -151,7 +170,7 @@ class ResolverCache(object):
         else:
             logger.warn(f"resolving {len(todo)} reference strings")
 
-            for info in _resolve_references(todo):
+            for info in _resolve_references(todo, api_token, logger):
                 refstring = info["refstring"]
                 resolved[refstring] = self._save(refstring, info)
 
