@@ -72,6 +72,11 @@ def _target_refs_for_session(extractrefs_out_path, reconstruct_targets, config, 
 
 
 class ClassicSessionAnalytics(object):
+    """
+    A simple class for holding some analytics measurements relating to a single
+    Arxiv processing session.
+    """
+
     session_id = None
     "The name of the Arxiv processing session (of the form YYYY-MM-DD)."
 
@@ -111,6 +116,13 @@ class ClassicSessionAnalytics(object):
     n_guess_refs = {self.n_guess_refs}"""
 
     def csv_header(self):
+        """
+        Return an array of strings corresponding to a header row for the data
+        columns that would be returned by :meth:`as_csv_row`.
+
+        Nothing about this function is actually specific to the CSV tabular
+        format.
+        """
         h = [
             "session_id",
             "items",
@@ -129,6 +141,13 @@ class ClassicSessionAnalytics(object):
         return h
 
     def as_csv_row(self):
+        """
+        Return an array of strings capturing the contents of this object in a
+        tabular form.
+
+        Nothing about this function is actually specific to the CSV tabular
+        format.
+        """
         r = [
             self.session_id,
             str(self.n_items),
@@ -299,6 +318,28 @@ def analyze_session(
 
 
 def compare_refstrings(session_id, A_config, B_config, logger=default_logger):
+    """
+    Given two processing passes of a single Arxiv update session, generate
+    textual output summarizing the differences between the reference strings
+    extracted by the two passes.
+
+    This function is a generator yielding lines of text, including newline
+    characters. You will typically invoke it as::
+
+        for line in compare_refstrings(session_id, A_config, B_config):
+            print(line, end='')
+
+    The resulting output loosely resembles a "unified diff".
+
+    The ``session_id`` is a string session ID, something like ``"2021-11-07"``.
+
+    The ``A_config`` and ``B_config`` variables are Config objects that give
+    path information about the files produced by the two processing runs.
+    """
+
+    # Scan the `extractrefs.out` output to discover which items were processed
+    # and had refstrings extracted.
+
     er1 = A_config.classic_session_log_path(session_id) / "extractrefs.out"
     er2 = B_config.classic_session_log_path(session_id) / "extractrefs.out"
 
@@ -308,6 +349,9 @@ def compare_refstrings(session_id, A_config, B_config, logger=default_logger):
     B_results = dict(
         (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger)
     )
+
+    # For each item, read the two associated sets of refstring outputs, emit the
+    # differences between the two, and accumulate statistics.
 
     stems = set(A_results.keys())
     stems.update(B_results.keys())
@@ -369,6 +413,8 @@ def compare_refstrings(session_id, A_config, B_config, logger=default_logger):
 
             yield line.decode("utf-8", "backslashreplace")
 
+    # Emit some summary statistics
+
     yield "\n"
     yield f">>> {n_items_same} unchanged items\n"
     yield f">>> {n_items_diff} changed items\n"
@@ -418,6 +464,11 @@ class ClassicSessionReprocessor(object):
             raise Exception("must set `logs_out_base` before reprocessing")
 
     def reprocess(self, session_id):
+        """
+        Reprocess the specified session by invoking a Dockerized reference
+        extractor.
+        """
+
         self._validate()
 
         argv = [
@@ -507,6 +558,17 @@ def _maybe_load_raw_file(path, logger):
 
 
 class ResolveComparison(object):
+    """
+    A simple class for holding some analytics measurements relating to two
+    different reference extractions of a single Arxiv submission.
+
+    We do this in a differential manner because these data consider not just
+    "refstring" extraction but the resolution of those refstrings into actual
+    ADS bibcodes. Such resolution is expensive, so we save a lot of resources if
+    we only look at the difference between two sets of refstrings rather than
+    computing all resolutions for both sets separately.
+    """
+
     stem = None
     A_ext = None
     B_ext = None
@@ -526,6 +588,21 @@ class ResolveComparison(object):
 def compare_resolved(
     session_id, A_config, B_config, rcache, logger=default_logger, **kwargs
 ):
+    """
+    Compare the results of reference extraction and resolution for two different
+    passes over the same Arxiv session.
+
+    This function returns a dictionary of results mapping Arxiv item "stems" (a
+    string of the form ``"arXiv/2111/00061"``) to ResolveComparison objects.
+
+    This function will resolve the reference strings to bibcodes using the ADS
+    reference resolution microservice. It interfaces with this microservice via
+    the ``rcache`` argument, which should be a ResolverCache instance. The
+    resolver cache batches resultion requests and, yes, caches their results. It
+    takes about 1--1.5 seconds to resolve a reference, so the resolution process
+    can be slow.
+
+    """
     # First, figure out which items in the two sessions were resolved.
 
     er1 = A_config.classic_session_log_path(session_id) / "extractrefs.out"
@@ -542,8 +619,8 @@ def compare_resolved(
     stems.update(B_results.keys())
 
     # Now figure out the diffs for each item and build up a list of reference
-    # strings to resolve. By only looking at changed items, we massively
-    # decrease the number of resolutions we need to perform (hopefully).
+    # strings to resolve. By only looking at changed items, w decrease the
+    # number of resolutions we need to perform by a factor of ~4.
     #
     # We batch up all of the references to resolve in order to make optimal use
     # of the resolver microservice API.
