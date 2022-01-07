@@ -263,6 +263,7 @@ The fulltext filenames typically are in one of these forms:
                 )
 
         if not wrote_refs:
+            #  This is where we should do stuff with PDFs!
             self.logger.warning(f"{item_id}: TEMP bailing: TeX didn't work")
             return None
 

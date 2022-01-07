@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 from .utils import split_item_path
 
@@ -419,6 +420,9 @@ class ClassicSessionReprocessor(object):
     impl_kind = "python"
     "Which extractor implementation to use."
 
+    capture_stderr = False
+    "Whether stderr output should be saved to `extractrefs.stderr`"
+
     def __init__(self, config=None, image_name=None, logs_out_base=None):
         if config is not None:
             self.config = config
@@ -489,6 +493,10 @@ class ClassicSessionReprocessor(object):
         logs_out_dir = self.logs_out_base / year / session_id
         os.makedirs(logs_out_dir, exist_ok=True)
         out_log_path = logs_out_dir / "extractrefs.out"
+        stderr_path = logs_out_dir / "extractrefs.stderr"
+
+        if self.capture_stderr:
+            print(f"inner stderr captured to `{stderr_path}`", file=sys.stderr)
 
         # Setup: input processing specification. Copy the source file to the output
         # directory to make it simple to do analytics on later.
@@ -509,9 +517,21 @@ class ClassicSessionReprocessor(object):
         # Ready to go!
 
         with open(input_path, "rb") as f_in, open(out_log_path, "wb") as f_out:
-            subprocess.check_call(
-                argv, shell=False, close_fds=True, stdin=f_in, stdout=f_out, env=env
-            )
+            if self.capture_stderr:
+                with open(stderr_path, "wb") as f_err:
+                    subprocess.check_call(
+                        argv,
+                        shell=False,
+                        close_fds=True,
+                        stdin=f_in,
+                        stdout=f_out,
+                        stderr=f_err,
+                        env=env,
+                    )
+            else:
+                subprocess.check_call(
+                    argv, shell=False, close_fds=True, stdin=f_in, stdout=f_out, env=env
+                )
 
 
 def _maybe_load_raw_file(path, logger):
