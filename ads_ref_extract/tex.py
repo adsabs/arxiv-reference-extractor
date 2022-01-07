@@ -32,7 +32,7 @@ def extract_references(
     ft_path: Path,
     tr_path: Path,
     bibcode: str,
-) -> None:
+) -> bool:
     """
     Extract references from an Arxiv TeX source package.
 
@@ -49,6 +49,10 @@ def extract_references(
     bibcode : str
         The bibcode associated with the ArXiv submission
 
+    Returns
+    -------
+    Whether references were successfully extracted.
+
     Notes
     -----
     This function will change its working directory, so the input paths must be absolute.
@@ -58,7 +62,7 @@ def extract_references(
     try:
         with TemporaryDirectory() as tmpdir:
             os.chdir(tmpdir)
-            _extract_inner(session, item_id, ft_path, tr_path, bibcode)
+            return _extract_inner(session, item_id, ft_path, tr_path, bibcode)
     finally:
         os.chdir(orig_dir)
 
@@ -70,7 +74,7 @@ def _extract_inner(
     tr_path: Path,
     bibcode: str,
     until: Optional[str] = None,
-) -> None:
+) -> bool:
     """
     The main extraction implementation, called with the CWD set to a new
     temporary directory.
@@ -106,7 +110,7 @@ def _extract_inner(
         shutil.copy(ft_path, outfn)
 
     if until == "unpack":
-        return
+        return False
 
     # NOTE: classic used to use the submission date to determine which TeX stack
     # to use.
@@ -119,7 +123,7 @@ def _extract_inner(
     # we still don't know what the main source file is!
     sources.munge_refs(item_id, session.logger)
     if until == "munge":
-        return
+        return False
 
     # Try compiling and seeing if we can pull out the refs
     refs = sources.extract_refs(session, item_id)
@@ -130,7 +134,25 @@ def _extract_inner(
             session.logger.info(f"{item_id}: extracted {len(refs)} references:")
             for ref in refs:
                 session.logger.info(f"   {ref}")
-        return
+        return False
+
+    # TODO(?): "see if changing the source .tex to include PDF files helps"
+    # This changed .eps includes to .pdf and converted the corresponding files,
+    # then recompiled.
+
+    if session.skip_refs:
+        session.logger.info(f"{item_id}: skipping writing references")
+        return False
+
+    tr_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with tr_path.open("wt", encoding="utf-8") as f:
+        print(f"%R {bibcode}", file=f)
+        print("%Z", file=f)
+        for ref in refs:
+            print(ref, file=f)
+
+    return True
 
 
 _START_REFS_REGEX = re.compile(

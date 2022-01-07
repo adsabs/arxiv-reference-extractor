@@ -53,9 +53,16 @@ class CompatExtractor(object):
     "A logger"
 
     force = False
+    "Recreate target reference file even if it exists and is more recent than source."
+
     no_harvest = False
+    "Do not attempt to harvest or refresh PDF files from arXiv."
+
     no_pdf = False
+    "Do not attempt to process PDF files if original source was LaTeX (implies `no_harvest`)."
+
     skip_refs = False
+    "If true, don't actually write out the new ('target') reference file."
 
     @classmethod
     def new_from_commandline(cls, argv=sys.argv):
@@ -241,19 +248,25 @@ The fulltext filenames typically are in one of these forms:
             self.logger.warning(f"{item_id}: TEMP bailing because no bibcode")
             return None
 
+        wrote_refs = False
+
         if not is_pdf:
             try:
                 from . import tex
 
-                tex.extract_references(
-                    self, item_id, ft_path, tr_path, bibcode, self.logger
+                wrote_refs = tex.extract_references(
+                    self, item_id, ft_path, tr_path, bibcode
                 )
             except Exception as e:
                 self.logger.warning(
                     f"{item_id}: TeX extraction failed: {e} ({e.__class__.__name__})"
                 )
 
-        return None
+        if not wrote_refs:
+            self.logger.warning(f"{item_id}: TEMP bailing: TeX didn't work")
+            return None
+
+        return tr_path
 
 
 def entrypoint(argv=sys.argv, stream=sys.stdin):
