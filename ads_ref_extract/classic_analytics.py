@@ -413,6 +413,12 @@ class ClassicSessionReprocessor(object):
     logs_out_base = None
     "The base directory for output log files."
 
+    custom_app_dir = None
+    "A local directory with a custom copy of the app to be mounted into the container."
+
+    impl_kind = "python"
+    "Which extractor implementation to use."
+
     def __init__(self, config=None, image_name=None, logs_out_base=None):
         if config is not None:
             self.config = config
@@ -458,11 +464,18 @@ class ClassicSessionReprocessor(object):
             f"{self.config.fulltext_base}:/virtual_abstracts/sources/ArXiv/fulltext:ro,Z",
             "-v",
             f"{self.config.target_refs_base}:/refs_out:rw,Z",
+        ]
+
+        if self.custom_app_dir is not None:
+            argv += ["-v", f"{self.custom_app_dir}:/app:ro,Z"]
+
+        argv += [
             "-e",
             "ADS_ABSTRACTS",
             "-e",
             "ADS_REFERENCES",
             self.image_name,
+            f"--impl-{self.impl_kind}",
             "--pbase",
             "/virtual_abstracts/sources/ArXiv/fulltext",
             "--tbase",

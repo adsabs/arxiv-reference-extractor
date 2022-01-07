@@ -16,17 +16,19 @@ A modernized version of the pipeline is under construction in the
 `ads_ref_extract/` Python package. At the moment, most of the code there has
 to do with parsing pipeline logs to extract analytics about its performance.
 
+## Launching the pipeline
+
 To unit-test in the Docker container, use commands like:
 
 ```
-$ ./localtest.sh python3 -m ads_ref_extract.tex extract /proj/ads/abstracts/sources/ArXiv/fulltext/arXiv/2111/03186.tar.gz
+$ ./localtest.sh --pymod tex extract /proj/ads/abstracts/sources/ArXiv/fulltext/arXiv/2111/03186.tar.gz
 ```
 
 To test the compatibility interface:
 
 ```
 $ echo 'arXiv/2111/03160.tar.gz 2021arXiv211103160S X18-82393 20211107' \
-  |./localtest.sh python3 -m ads_ref_extract.compat --debug --force --tbase=/refout/pytest/sources
+  |./localtest.sh --impl-python --debug --force --tbase /refout/pytest/sources
 ```
 
 ## Maintainer(s)
