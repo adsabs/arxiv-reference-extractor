@@ -28,7 +28,6 @@ __all__ = ["extract_references"]
 
 def extract_references(
     session: CompatExtractor,
-    item_id: str,
     ft_path: Path,
     tr_path: Path,
     bibcode: str,
@@ -40,8 +39,6 @@ def extract_references(
     ----------
     session : CompatExtractor
         The extraction session object
-    item_id : str
-        The working ID of the item to process; opaque here; just used for logging
     ft_path : Path
         The absolute path of the fulltext source
     tr_path : Path
@@ -62,14 +59,13 @@ def extract_references(
     try:
         with TemporaryDirectory() as tmpdir:
             os.chdir(tmpdir)
-            return _extract_inner(session, item_id, ft_path, tr_path, bibcode)
+            return _extract_inner(session, ft_path, tr_path, bibcode)
     finally:
         os.chdir(orig_dir)
 
 
 def _extract_inner(
     session: CompatExtractor,
-    item_id: str,
     ft_path: Path,
     tr_path: Path,
     bibcode: str,
@@ -93,9 +89,7 @@ def _extract_inner(
     elif input_base.endswith(".gz"):
         # Assume that other .gz files are directly compressed TeX. Ideally we wouldn't
         # rely on the shell to do the redirection here.
-        session.logger.debug(
-            f"{item_id}: guessing that fulltext `{ft_path}` is compressed TeX"
-        )
+        session.item_trace2("guessing that fulltext is compressed TeX")
         outfn = input_base.replace(".gz", "")
         subprocess.check_call(f"zcat {ft_path} >{outfn}", shell=True)
     elif input_base.endswith(".tex"):
@@ -103,9 +97,7 @@ def _extract_inner(
         shutil.copy(ft_path, input_base)
     else:
         # Assume that it's plain TeX with a weird/missing extension
-        session.logger.debug(
-            f"{item_id}: guessing that fulltext `{ft_path}` is funny-named straight TeX"
-        )
+        session.item_trace2("guessing that fulltext is funny-named straight TeX")
         outfn = input_base + ".tex"
         shutil.copy(ft_path, outfn)
 
@@ -117,23 +109,23 @@ def _extract_inner(
 
     # Probe the files to look for TeX sources and guess what the "main" TeX file
     # is. We can't know for sure until we actually try to compile, though.
-    sources = TexSources.scan_cwd(item_id, session.logger)
+    sources = TexSources.scan_cwd(session)
 
     # Munge the TeX sources to help us find references. Note that at this point
     # we still don't know what the main source file is!
-    sources.munge_refs(item_id, session.logger)
+    sources.munge_refs(session)
     if until == "munge":
         return False
 
     # Try compiling and seeing if we can pull out the refs
-    refs = sources.extract_refs(session, item_id)
+    refs = sources.extract_refs(session)
     if until == "extract":
         if not refs:
-            session.logger.info(f"{item_id}: no references extracted")
+            session.item_info("extract-only mode: no references extracted")
         else:
-            session.logger.info(f"{item_id}: extracted {len(refs)} references:")
+            session.item_info("extract-only mode: got some references", n=len(refs))
             for ref in refs:
-                session.logger.info(f"   {ref}")
+                session.item_info("     ref:", r=ref)
         return False
 
     # TODO(?): "see if changing the source .tex to include PDF files helps"
@@ -141,7 +133,7 @@ def _extract_inner(
     # then recompiled.
 
     if session.skip_refs:
-        session.logger.info(f"{item_id}: skipping writing references")
+        session.item_trace2("skipping writing references")
         return False
 
     tr_path.parent.mkdir(parents=True, exist_ok=True)
@@ -260,9 +252,9 @@ class TexSourceItem(object):
         self.fmt = ""
         self.ignore = False
 
-    def munge_refs(self, item_id: str, logger: Logger):
+    def munge_refs(self, session: CompatExtractor):
         if self.ignore:
-            logger.debug(f"{item_id}: skipping munging of ignored file `{self.path}`")
+            session.item_trace2("skipping munging of ignored file", p=self.path)
             return
 
         # Perl has \Q/\E to make sure that if self.bibitem contains regex
@@ -344,7 +336,7 @@ class TexSourceItem(object):
                 print(line, end="", file=f_out)
 
         # All done!
-        logger.debug(f"{item_id}: detected and munged {n_tagged} refs in `{self.path}`")
+        session.item_trace1("finished munging a file", n_tagged=n_tagged, p=self.path)
         os.rename(f_out.name, self.path)
 
     def tag_ref(self, tag: str, text: str, ref_type: str, f_out):
@@ -376,17 +368,11 @@ class TexSourceItem(object):
 
         print("\\" + tag, _REF_EXTRA_OPENING, text, _REF_EXTRA_CLOSING, file=f_out)
 
-    def extract_refs_as_main_file(
-        self, session: CompatExtractor, item_id: str
-    ) -> List[str]:
-        session.logger.debug(
-            f"{item_id}: trying to process with `{self.path}` as main file"
-        )
+    def extract_refs_as_main_file(self, session: CompatExtractor) -> List[str]:
+        session.item_trace1("trying a TeX build", main_file=self.path)
 
         if self.ignore:
-            session.logger.debug(
-                f"{item_id}: ignoring `{self.path}` due to 'ignore' flag"
-            )
+            session.item_trace2("actually, ignoring due to flag")
             return []
 
         command = [
@@ -405,13 +391,11 @@ class TexSourceItem(object):
                 check=True,
             )
         except subprocess.TimeoutExpired:
-            session.logger.info(f"{item_id}: TeX timed out for `{self.path}`")
+            session.item_trace1("TeX timed out")
         except subprocess.CalledProcessError as e:
-            session.logger.info(f"{item_id}: TeX failed: {e}")
+            session.item_trace2("TeX failed", e=e)
         except Exception as e:
-            session.logger.info(
-                f"{item_id}: other failure when trying to TeX `{self.path}`: {e}"
-            )
+            session.item_warn("unexpected failure when trying to TeX", e=e)
 
         base = str(self.path).rsplit(".", 1)[0]
         pdf_path = Path(base + ".pdf")
@@ -431,24 +415,23 @@ class TexSourceItem(object):
 
         try:
             if pdf_path.stat().st_size == 0:
-                session.logger.info(
-                    f"{item_id}: TeX was OK but output `{pdf_path}` has 0 size"
-                )
+                session.item_trace2("TeX was OK but output has 0 size", p=pdf_path)
+
                 try:
                     pdf_path.unlink()
                 except Exception as e:
-                    session.logger.warn(
-                        f"{item_id}: error unlinking empty output file `{pdf_path}`: {e}"
+                    session.item_warn(
+                        "error unlinking empty TeX output file", p=pdf_path, e=e
                     )
                 return []
         except FileNotFoundError:
-            session.logger.info(
-                f"{item_id}: expected output `{pdf_path}` not found with primary `{self.path}`"
+            session.item_warn(
+                "expected TeX output file not found", pmain=self.path, ppdf=pdf_path
             )
             return []
         except Exception as e:
-            session.logger.info(
-                f"{item_id}: error stating expected output `{pdf_path}` with primary `{self.path}`: {e}"
+            session.item_warn(
+                "error stat'ing TeX output file", pmain=self.path, ppdf=pdf_path, e=e
             )
             return []
 
@@ -500,7 +483,7 @@ def _match_any(text: str, regex_list: List[re.Pattern]) -> Optional[re.Match]:
 
 
 def _probe_one_source(
-    item_id: str, filepath: Path, logger: Logger, non_main_files: set
+    filepath: Path, non_main_files: set, session: CompatExtractor
 ) -> Optional[TexSourceItem]:
     s = str(filepath).lower()
     item = TexSourceItem(filepath)
@@ -536,7 +519,7 @@ def _probe_one_source(
 
     basename = s.rsplit(".", 1)[0]
     item.score += _BASENAME_SCORE_DELTAS.get(basename, 0)
-    logger.debug(f"{item_id}: scanning potential TeX source `{filepath}`")
+    session.item_trace2("scanning potential TeX source", p=filepath)
 
     try:
         # TODO: guess encoding?
@@ -584,7 +567,7 @@ def _probe_one_source(
                     non_main_files.add(m[1])
                     continue
     except Exception as e:
-        logger.info(f"{item_id}: failed to scan potential TeX source `{filepath}`: {e}")
+        session.item_warn("failed to scan potential TeX source", p=filepath, e=e)
         return None
 
     return item
@@ -607,14 +590,14 @@ class TexSources(object):
     items: List[TexSourceItem]
 
     @classmethod
-    def scan_cwd(cls, item_id: str, logger: Logger) -> "TexSources":
+    def scan_cwd(cls, session: CompatExtractor) -> "TexSources":
         items: List[TexSourceItem] = []
         non_main_files = set()
 
         # Get the base list
 
         for filepath in _find_files_cwd():
-            item = _probe_one_source(item_id, filepath, logger, non_main_files)
+            item = _probe_one_source(filepath, non_main_files, session)
             if item is None:
                 continue
 
@@ -657,17 +640,17 @@ class TexSources(object):
         inst.items = items
         return inst
 
-    def munge_refs(self, item_id: str, logger: Logger):
+    def munge_refs(self, session: CompatExtractor):
         for item in self.items:
-            item.munge_refs(item_id, logger)
+            item.munge_refs(session)
 
-    def extract_refs(self, session: CompatExtractor, item_id: str) -> List[str]:
+    def extract_refs(self, session: CompatExtractor) -> List[str]:
         for item in self.items:
-            refs = item.extract_refs_as_main_file(session, item_id)
+            refs = item.extract_refs_as_main_file(session)
             if refs:
                 return refs
 
-        session.logger.info(f"{item_id}: couldn't extract refs for any input file :-(")
+        session.item_trace1("couldn't extract refs for any input file :-(")
         return []
 
 

@@ -199,6 +199,63 @@ The fulltext filenames typically are in one of these forms:
             self.logger.info(f"{n_failures} items could not be processed")
         return 0
 
+    # Structured logging functions. These are intended to produce logging output
+    # that is informative and readable, but still amenable to machine-processing
+    # so that we can easily gather good analytics about the overall performance
+    # of the pipeline.
+
+    _current_item = "???"
+
+    def item_info(self, summary: str, **kwargs):
+        """
+        Log something informational about the processing of an item. Use this
+        function for data that will feed into analytics extracted from
+        production runs.
+
+        Parameters
+        ==========
+        summary : str
+            A readable summary of the event. This text should be invariant, so that
+            logs can be automatically summarized to keep track of the rates of
+            various kinds of events
+        **kwargs
+            All event-specific information should be passed as kwargs. These
+            will be included in the log message in `key=val` format, but in a
+            way that allows them to be stripped out automatically.
+        """
+        # Sort for stable output across invocations
+        details = " ".join(f"{t[0]}={t[1]}" for t in sorted(kwargs.items()))
+        self.logger.info(f"% {summary} @i {self._current_item} {details}")
+
+    def item_warn(self, summary: str, **kwargs):
+        """
+        Log a warning about the processing of an item. Use this for cases where
+        the assumptions of the pipeline appear to mistaken or expected
+        invariants have failed to hold; e.g., simple failure to process a TeX
+        file doesn't count.
+        """
+        details = " ".join(f"{t[0]}={t[1]}" for t in sorted(kwargs.items()))
+        self.logger.warning(f"% {summary} @w {self._current_item} {details}")
+
+    def item_trace1(self, summary: str, **kwargs):
+        """
+        Log a level-1 trace event about the processing of an item. Use this for
+        high-level information about what's happening in the pipeline that is
+        *not* needed for analytics.
+        """
+        details = " ".join(f"{t[0]}={t[1]}" for t in sorted(kwargs.items()))
+        self.logger.debug(f"% {summary} @t1 {self._current_item} {details}")
+
+    def item_trace2(self, summary: str, **kwargs):
+        """
+        Log a level-2 trace event about the processing of an item. Like trace1,
+        but less important.
+        """
+        details = " ".join(f"{t[0]}={t[1]}" for t in sorted(kwargs.items()))
+        self.logger.log(
+            logging.DEBUG - 1, f"% {summary} @t2 {self._current_item} {details}"
+        )
+
     def process_one(self, preprint_path: str, bibcode: Optional[str]) -> Optional[str]:
         """
         Process a single preprint.
@@ -206,17 +263,37 @@ The fulltext filenames typically are in one of these forms:
         Returns the path to the newly created reference file if the preprint was
         processed successfully. Returns None if it couldn't be processed.
         """
+        item_stem, item_ext = split_item_path(preprint_path)
+        item_id = item_stem  # might tweak this later
+        self._current_item = item_id
+        self.item_info("begin", pp_path=preprint_path, bibcode=bibcode)
+        exception = False
+
+        try:
+            tr_path = self._process_one_inner(bibcode, item_stem, item_ext)
+            if tr_path is None:
+                outcome = "fail"
+            else:
+                outcome = "success"
+        except Exception as e:
+            tr_path = None
+            self.item_warn("unhandled exception", e=e)
+            outcome = "fail"
+            exception = True
+
+        self.item_info("end", outcome=outcome, exception=exception)
+        self._current_item = "???"
+        return tr_path
+
+    def _process_one_inner(
+        self, bibcode: Optional[str], item_stem: str, item_ext: str
+    ) -> Optional[str]:
         # Check out the fulltext source
 
-        item_stem, item_ext = split_item_path(preprint_path)
-
-        item_id = item_stem  # might tweak this later
         ft_path = self.config.fulltext_base / f"{item_stem}.{item_ext}"
 
         if not ft_path.exists():
-            self.logger.warning(
-                f"{item_id}: cannot find expected file `{ft_path}` for input `{preprint_path}`"
-            )
+            self.item_warn("cannot find expected fulltext", ft_path=ft_path)
             return None
 
         if item_ext in ("tar.gz", "tar", "tex.gz", "tex", "gz"):
@@ -224,9 +301,7 @@ The fulltext filenames typically are in one of these forms:
         elif item_ext in ("pdf", "pdf.gz"):
             is_pdf = True
         else:
-            self.logger.warning(
-                f"{item_id}: unexpected extension `{item_ext}` for input `{preprint_path}`; ignoring"
-            )
+            self.item_warn("unexpected input extension", ext=item_ext)
             return None
 
         # Check out the target refs file
@@ -234,18 +309,20 @@ The fulltext filenames typically are in one of these forms:
         tr_path = self.config.target_refs_base / f"{item_stem}.raw"
 
         if not tr_path.exists():
-            self.logger.debug(f"{item_id}: creating output {tr_path}")
+            self.item_trace1("creating output target-ref file", tr_path=tr_path)
         elif tr_path.stat().st_mtime < ft_path.stat().st_mtime:
-            self.logger.debug(f"{item_id}: output {tr_path} needs updating")
+            self.item_trace1("output target-ref file needs updating", tr_path=tr_path)
         elif self.force:
-            self.logger.debug(f"{item_id}: forcing recreation of output {tr_path}")
+            self.item_trace1(
+                "forcing recreation of output target-ref file", tr_path=tr_path
+            )
         else:
-            self.logger.debug(f"{item_id}: output {tr_path} is up-to-date")
+            self.item_trace1("output target-ref file is up-to-date", tr_path=tr_path)
             return str(tr_path)
 
         # TODO: this is where classic guesses the bibcode and subdate if needed.
         if bibcode is None:
-            self.logger.warning(f"{item_id}: TEMP bailing because no bibcode")
+            self.item_warn("TEMP bailing because no bibcode")
             return None
 
         wrote_refs = False
@@ -254,17 +331,13 @@ The fulltext filenames typically are in one of these forms:
             try:
                 from . import tex
 
-                wrote_refs = tex.extract_references(
-                    self, item_id, ft_path, tr_path, bibcode
-                )
+                wrote_refs = tex.extract_references(self, ft_path, tr_path, bibcode)
             except Exception as e:
-                self.logger.warning(
-                    f"{item_id}: TeX extraction failed: {e} ({e.__class__.__name__})"
-                )
+                self.item_warn("TeX extraction raised", e=e, c=e.__class__.__name__)
 
         if not wrote_refs:
             #  This is where we should do stuff with PDFs!
-            self.logger.warning(f"{item_id}: TEMP bailing: TeX didn't work")
+            self.item_warn("TEMP bailing because we can only TeX and that didn't work")
             return None
 
         return tr_path
