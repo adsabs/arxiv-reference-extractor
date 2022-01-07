@@ -28,7 +28,7 @@ To test the compatibility interface:
 
 ```
 $ echo 'arXiv/2111/03160.tar.gz 2021arXiv211103160S X18-82393 20211107' \
-  |./localtest.sh --impl-python --debug --force --tbase /refout/pytest/sources
+  |./localtest.sh --impl-python --debug --force --tbase /results/oneoffs/references/sources
 ```
 
 ## Maintainer(s)

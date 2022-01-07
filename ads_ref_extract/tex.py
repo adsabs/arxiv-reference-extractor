@@ -118,8 +118,8 @@ def _extract_inner(
         return False
 
     # Try compiling and seeing if we can pull out the refs
-    refs = sources.extract_refs(session)
-    if until == "extract":
+    refs = sources.extract_refs(session, dump_text=(until == "pdftotext"))
+    if until == "extract" or until == "pdftotext":
         if not refs:
             session.item_info("extract-only mode: no references extracted")
         else:
@@ -131,6 +131,10 @@ def _extract_inner(
     # TODO(?): "see if changing the source .tex to include PDF files helps"
     # This changed .eps includes to .pdf and converted the corresponding files,
     # then recompiled.
+
+    if not refs:
+        session.item_info("unable to extract references from TeX source")
+        return False
 
     if session.skip_refs:
         session.item_trace2("skipping writing references")
@@ -189,9 +193,14 @@ def _split_on_delimited_prefix(text: str, open: str, close: str) -> Tuple[str, s
 _FIND_REF_REGEX = re.compile(r"<r>(.*?)<\s*/r\s*>", re.MULTILINE | re.DOTALL)
 
 
-def _extract_references(text_path: Path) -> List[str]:
+def _extract_references(text_path: Path, dump_text=False) -> List[str]:
     with text_path.open("rt", encoding="utf8") as f:
         text = f.read()
+
+    if dump_text:
+        print(f"====== text extracted to {text_path} ======", file=sys.stderr)
+        print(text, file=sys.stderr)
+        print("====== end ======", file=sys.stderr)
 
     refs = []
 
@@ -221,7 +230,7 @@ def _postprocess_one_ref(ref: str) -> str:
 
 _REF_EXTRA_OPENING = r"\newpage\onecolumn\section*{}$<$r$>$\sloppy\raggedright"
 _REF_EXTRA_CLOSING = r"$<$/r$>$"
-_OUTPUT_WRITTEN_REGEX = re.compile(r"Output written on (.*) \(")
+_OUTPUT_WRITTEN_REGEX = re.compile(rb"Output written on (.*) \(")
 
 
 class TexSourceItem(object):
@@ -255,7 +264,7 @@ class TexSourceItem(object):
     def munge_refs(self, session: CompatExtractor):
         if self.ignore:
             session.item_trace2("skipping munging of ignored file", p=self.path)
-            return
+            return 0
 
         # Perl has \Q/\E to make sure that if self.bibitem contains regex
         # special characters, they're treated as literals. Basic Python regexes
@@ -338,6 +347,7 @@ class TexSourceItem(object):
         # All done!
         session.item_trace1("finished munging a file", n_tagged=n_tagged, p=self.path)
         os.rename(f_out.name, self.path)
+        return n_tagged
 
     def tag_ref(self, tag: str, text: str, ref_type: str, f_out):
         """
@@ -368,7 +378,9 @@ class TexSourceItem(object):
 
         print("\\" + tag, _REF_EXTRA_OPENING, text, _REF_EXTRA_CLOSING, file=f_out)
 
-    def extract_refs_as_main_file(self, session: CompatExtractor) -> List[str]:
+    def extract_refs_as_main_file(
+        self, session: CompatExtractor, dump_text=False
+    ) -> List[str]:
         session.item_trace1("trying a TeX build", main_file=self.path)
 
         if self.ignore:
@@ -403,15 +415,21 @@ class TexSourceItem(object):
 
         # See if the logfile gives us a better output name
         try:
-            f = log_path.open("rt")
+            f = log_path.open("rb")
         except FileNotFoundError:
             pass
         else:
-            with f:
-                for line in f:
-                    m = _OUTPUT_WRITTEN_REGEX.match(line)
-                    if m is not None:
-                        pdf_path = Path(m[1])
+            try:
+                with f:
+                    for line in f:
+                        m = _OUTPUT_WRITTEN_REGEX.match(line)
+                        if m is not None:
+                            pdf_path = Path(m[1].decode(errors="surrogateescape"))
+            except Exception as e:
+                # This will happen if the log
+                session.item_trace2(
+                    "couldn't scan logfile", e=e, c=e.__class__.__name__
+                )
 
         try:
             if pdf_path.stat().st_size == 0:
@@ -442,7 +460,8 @@ class TexSourceItem(object):
             ["pdftotext", "-raw", "-enc", "UTF-8", str(pdf_path), str(text_path)],
             shell=False,
         )
-        return _extract_references(text_path)
+        session.item_trace2("trying to extract refs from pdftotext output", p=text_path)
+        return _extract_references(text_path, dump_text=dump_text)
 
 
 _BASENAME_SCORE_DELTAS = {
@@ -641,16 +660,20 @@ class TexSources(object):
         return inst
 
     def munge_refs(self, session: CompatExtractor):
-        for item in self.items:
-            item.munge_refs(session)
+        n_total = 0
 
-    def extract_refs(self, session: CompatExtractor) -> List[str]:
         for item in self.items:
-            refs = item.extract_refs_as_main_file(session)
+            n_total += item.munge_refs(session)
+
+        if n_total == 0:
+            session.item_warn("didn't find anything to munge")
+
+    def extract_refs(self, session: CompatExtractor, dump_text=False) -> List[str]:
+        for item in self.items:
+            refs = item.extract_refs_as_main_file(session, dump_text=dump_text)
             if refs:
                 return refs
 
-        session.item_trace1("couldn't extract refs for any input file :-(")
         return []
 
 
@@ -687,39 +710,29 @@ def _do_one(settings, until):
         with TemporaryDirectory() as tmpdir:
             os.chdir(tmpdir)
             session.logger.info(f"CLI harness: working in tempdir `{tmpdir}`")
-            _extract_inner(session, "CLI", ft_path, None, "N/A", until=until)
+            _extract_inner(session, ft_path, None, "N/A", until=until)
     else:
         os.chdir(settings.workdir)
-        _extract_inner(session, "CLI", ft_path, None, "N/A", until=until)
+        _extract_inner(session, ft_path, None, "N/A", until=until)
 
 
 def entrypoint():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="subcommand")
 
-    extract = commands.add_parser("extract")
-    extract.add_argument(
-        "fulltext", metavar="PATH", help="The path to the Arxiv fulltext file"
-    )
-    extract.add_argument(
-        "workdir", nargs="?", metavar="PATH", help="The path to extract to"
-    )
+    def declare_generic(name):
+        p = commands.add_parser(name)
+        p.add_argument(
+            "fulltext", metavar="PATH", help="The path to the Arxiv fulltext file"
+        )
+        p.add_argument(
+            "workdir", nargs="?", metavar="PATH", help="The path to extract to"
+        )
 
-    munge = commands.add_parser("munge")
-    munge.add_argument(
-        "fulltext", metavar="PATH", help="The path to the Arxiv fulltext file"
-    )
-    munge.add_argument(
-        "workdir", nargs="?", metavar="PATH", help="The path to extract to"
-    )
-
-    unpack = commands.add_parser("unpack")
-    unpack.add_argument(
-        "fulltext", metavar="PATH", help="The path to the Arxiv fulltext file"
-    )
-    unpack.add_argument(
-        "workdir", nargs="?", metavar="PATH", help="The path to extract to"
-    )
+    declare_generic("extract")
+    declare_generic("munge")
+    declare_generic("pdftotext")
+    declare_generic("unpack")
 
     settings = parser.parse_args()
     if settings.subcommand is None:
@@ -729,6 +742,8 @@ def entrypoint():
         _do_one(settings, "extract")
     elif settings.subcommand == "munge":
         _do_one(settings, "munge")
+    elif settings.subcommand == "pdftotext":
+        _do_one(settings, "pdftotext")
     elif settings.subcommand == "unpack":
         _do_one(settings, "unpack")
     else:

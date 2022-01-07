@@ -334,10 +334,14 @@ The fulltext filenames typically are in one of these forms:
                 wrote_refs = tex.extract_references(self, ft_path, tr_path, bibcode)
             except Exception as e:
                 self.item_warn("TeX extraction raised", e=e, c=e.__class__.__name__)
+                self.logger.warning("detailed traceback:", exc_info=sys.exc_info())
 
         if not wrote_refs:
             #  This is where we should do stuff with PDFs!
-            self.item_warn("TEMP bailing because we can only TeX and that didn't work")
+            self.item_warn(
+                "TEMP bailing because we can only TeX and that didn't work",
+                is_pdf=is_pdf,
+            )
             return None
 
         return tr_path

@@ -423,6 +423,9 @@ class ClassicSessionReprocessor(object):
     capture_stderr = False
     "Whether stderr output should be saved to `extractrefs.stderr`"
 
+    debug = False
+    "Whether the extractor should be run in debugging mode"
+
     def __init__(self, config=None, image_name=None, logs_out_base=None):
         if config is not None:
             self.config = config
@@ -486,6 +489,9 @@ class ClassicSessionReprocessor(object):
             "/refs_out",
             "--force",
         ]
+
+        if self.debug:
+            argv += ["--debug"]
 
         # Setup: output log file
 
