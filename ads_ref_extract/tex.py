@@ -11,7 +11,7 @@ External tools used:
 """
 
 import argparse
-from logging import Logger
+import binaryornot.check
 import os
 from pathlib import Path
 import re
@@ -529,16 +529,10 @@ def _probe_one_source(
     if "psfig" in s:
         return None
 
-    # not in classic: skip files that we definitely don't want, to reduce useless output
-    if (
-        s.endswith(".pdf")
-        or s.endswith(".jpg")
-        or s.endswith(".jpeg")
-        or s.endswith(".png")
-        or s.endswith(".xml")
-        or s.endswith(".psd")
-        or s.endswith(".mp4")
-    ):
+    if binaryornot.check.is_binary(str(filepath)):
+        session.item_trace2(
+            "skipping potential TeX source: detected as binary", p=filepath
+        )
         return None
 
     if (
