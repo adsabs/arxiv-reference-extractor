@@ -305,7 +305,7 @@ class TexSourceItem(object):
             else:
                 for line in f_in:
                     print(line, end="", file=f_out)
-                    if _START_REFS_REGEX.match(line) is not None:
+                    if _START_REFS_REGEX.search(line) is not None:
                         break
 
             tag = None
@@ -320,7 +320,7 @@ class TexSourceItem(object):
 
                 # TODO: implement {\em ...} munging here.
 
-                if _END_REFS_REGEX.match(line) is not None:
+                if _END_REFS_REGEX.search(line) is not None:
                     if cur_ref:
                         # Need to emit this before emitting the \end{references} line:
                         self.tag_ref(tag, cur_ref, ref_type, f_out)
@@ -476,11 +476,13 @@ class TexSourceItem(object):
         # Looks like we have a PDF!
 
         text_path = Path(str(pdf_path) + ".txt")
+        session.item_info(
+            "got a munged-TeX PDF", pmain=self.path, ppdf=pdf_path, ptext=text_path
+        )
         subprocess.check_call(
             ["pdftotext", "-raw", "-enc", "UTF-8", str(pdf_path), str(text_path)],
             shell=False,
         )
-        session.item_trace2("trying to extract refs from pdftotext output", p=text_path)
         return _extract_references(text_path, dump_text=dump_text)
 
 
