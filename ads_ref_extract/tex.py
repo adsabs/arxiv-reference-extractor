@@ -532,6 +532,10 @@ def _probe_one_source(
     if "psfig" in s:
         return None
 
+    # Text-like files that definitely aren't TeX sources:
+    if s.endswith(".eps"):
+        return None
+
     if binaryornot.check.is_binary(str(filepath)):
         session.item_trace2(
             "skipping potential TeX source: detected as binary", p=filepath
