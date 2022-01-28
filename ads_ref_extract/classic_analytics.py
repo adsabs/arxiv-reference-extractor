@@ -13,7 +13,14 @@ import sys
 
 from .utils import split_item_path
 
-__all__ = ["ClassicSessionAnalytics", "analyze_session"]
+__all__ = [
+    "ClassicSessionAnalytics",
+    "ClassicSessionReprocessor",
+    "analyze_session",
+    "compare_outcomes",
+    "compare_refstrings",
+    "compare_resolved",
+]
 
 default_logger = logging.getLogger(__name__)
 
@@ -288,6 +295,91 @@ def analyze_session(
     info.n_good_refs = n_good_refs
     info.n_guess_refs = n_guess_refs
     return info
+
+
+def compare_outcomes(
+    session_id, A_config, B_config, logger=default_logger, ignore_pdfonly: bool = False
+):
+    """
+    Given two processing passes of a single Arxiv update session, generate
+    textual output summarizing the differences between the outcomes of
+    processing the input items.
+
+    This function is a generator yielding lines of text, including newline
+    characters. You will typically invoke it as::
+
+        for line in compare_outcomes(session_id, A_config, B_config):
+            print(line, end='')
+
+    The ``session_id`` is a string session ID, something like ``"2021-11-07"``.
+
+    The ``A_config`` and ``B_config`` variables are Config objects that give
+    path information about the files produced by the two processing runs.
+    """
+
+    # Scan the `extractrefs.out` outputs to discover which items were processed
+    # and had refstrings extracted.
+
+    er1 = A_config.classic_session_log_path(session_id) / "extractrefs.out"
+    er2 = B_config.classic_session_log_path(session_id) / "extractrefs.out"
+
+    A_results = dict(
+        (t[0], t[1:]) for t in _target_refs_for_session(er1, True, A_config, logger)
+    )
+    B_results = dict(
+        (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger)
+    )
+
+    # Do the high-level comparison
+
+    stems = set(A_results.keys())
+    stems.update(B_results.keys())
+
+    regressions = set()
+    fixes = set()
+    n_preserves = 0
+    n_fails = 0
+    n_ignored_pdfs = 0
+
+    for stem in stems:
+        A_ext, A_path = A_results.get(stem, ("missing", None))
+        B_ext, B_path = B_results.get(stem, ("missing", None))
+
+        if ignore_pdfonly and A_ext == "pdf" or B_ext == "pdf":
+            n_ignored_pdfs += 1
+            continue
+
+        if A_path is None:
+            if B_path is None:
+                n_fails += 1
+            else:
+                fixes.add(stem)
+        elif B_path is None:
+            regressions.add(stem)
+        else:
+            n_preserves += 1
+
+    # Emit
+
+    if fixes:
+        yield "Fixed:\n"
+        for stem in sorted(fixes):
+            yield f"    {stem}\n"
+        yield "\n"
+
+    if regressions:
+        yield "Regressed:\n"
+        for stem in sorted(regressions):
+            yield f"    {stem}\n"
+        yield "\n"
+
+    yield f">>> {len(fixes)} fixed items\n"
+    yield f">>> {len(regressions)} regressed items\n"
+    yield f">>> {n_preserves} preserved successes\n"
+    yield f">>> {n_fails} unfixed failures\n"
+
+    if ignore_pdfonly:
+        yield f">>> {n_ignored_pdfs} ignored PDF-only items\n"
 
 
 def compare_refstrings(session_id, A_config, B_config, logger=default_logger):
