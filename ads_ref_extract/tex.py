@@ -102,6 +102,7 @@ def _extract_inner(
         shutil.copy(ft_path, outfn)
 
     if until == "unpack":
+        session.item_give_up("stop-at-unpack")
         return False
 
     # NOTE: classic used to use the submission date to determine which TeX stack
@@ -115,6 +116,7 @@ def _extract_inner(
     # we still don't know what the main source file is!
     sources.munge_refs(session)
     if until == "munge":
+        session.item_give_up("stop-at-munge")
         return False
 
     # Try compiling and seeing if we can pull out the refs
@@ -126,6 +128,8 @@ def _extract_inner(
             session.item_info("extract-only mode: got some references", n=len(refs))
             for ref in refs:
                 session.item_info("     ref:", r=ref)
+
+        session.item_give_up("stop-at-extract")
         return False
 
     # TODO(?): "see if changing the source .tex to include PDF files helps"
@@ -133,11 +137,15 @@ def _extract_inner(
     # then recompiled.
 
     if not refs:
+        # If we're here, something inside extract_refs() should have called item_give_up()
         session.item_info("unable to extract references from TeX source")
         return False
 
+    session.item_info("success getting refs from TeX", n=len(refs))
+
     if session.skip_refs:
         session.item_trace2("skipping writing references")
+        session.item_give_up("skip-refs")
         return False
 
     tr_path.parent.mkdir(parents=True, exist_ok=True)
@@ -482,7 +490,7 @@ _BASENAME_SCORE_DELTAS = {
     "aa": -100,
     "new_feat": -50,
     "rnaas": -5,
-    "mnras_template": -2,  # "some people put their paper in this file!
+    "mnras_template": -2,  # "some people put their paper in this file!"
 }
 
 _LATEX_DOCCLASS_REGEXES = [
@@ -685,6 +693,7 @@ class TexSources(object):
             if refs:
                 return refs
 
+        session.item_give_up("no-main-file-worked")
         return []
 
 

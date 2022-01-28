@@ -205,6 +205,7 @@ The fulltext filenames typically are in one of these forms:
     # of the pipeline.
 
     _current_item = "???"
+    _failure_reason = None
 
     def item_info(self, summary: str, **kwargs):
         """
@@ -226,6 +227,23 @@ The fulltext filenames typically are in one of these forms:
         # Sort for stable output across invocations
         details = " ".join(f"{t[0]}={t[1]}" for t in sorted(kwargs.items()))
         self.logger.info(f"% {summary} @i {self._current_item} {details}")
+
+    def item_give_up(self, reason: str):
+        """
+        Log that we are giving up on extracting references for this item. Unlike
+        other related functions, this method only takes one argument, which
+        should be a terse summary of the failure reason. This reason is emitted
+        in the summary output for the item.
+
+        If this function is called multiple times during the processing of an
+        item, only the first call will count. This generally fits the flow for
+        diagnosing why processing failed.
+        """
+        if self._failure_reason is not None:
+            return
+
+        self._failure_reason = reason
+        self.item_info("giving up", reason=reason)
 
     def item_warn(self, summary: str, **kwargs):
         """
@@ -266,6 +284,7 @@ The fulltext filenames typically are in one of these forms:
         item_stem, item_ext = split_item_path(preprint_path)
         item_id = item_stem  # might tweak this later
         self._current_item = item_id
+        self._failure_reason = None
         self.item_info("begin", pp_path=preprint_path, bibcode=bibcode)
         exception = False
 
@@ -275,14 +294,23 @@ The fulltext filenames typically are in one of these forms:
                 outcome = "fail"
             else:
                 outcome = "success"
+                self._failure_reason = "N/A"
         except Exception as e:
             tr_path = None
             self.item_warn("unhandled exception", e=e)
             outcome = "fail"
             exception = True
+            self._failure_reason = "unhandled-exception"
 
-        self.item_info("end", outcome=outcome, exception=exception)
+        if self._failure_reason is None:
+            self.item_warn("processing failed without a logged reason")
+            self._failure_reason = "uncaptured"
+
+        self.item_info(
+            "end", outcome=outcome, exception=exception, failwhy=self._failure_reason
+        )
         self._current_item = "???"
+        self._failure_reason = None
         return tr_path
 
     def _process_one_inner(
@@ -294,6 +322,7 @@ The fulltext filenames typically are in one of these forms:
 
         if not ft_path.exists():
             self.item_warn("cannot find expected fulltext", ft_path=ft_path)
+            self.item_give_up("missing-fulltext")
             return None
 
         if item_ext in ("tar.gz", "tar", "tex.gz", "tex", "gz"):
@@ -302,6 +331,7 @@ The fulltext filenames typically are in one of these forms:
             is_pdf = True
         else:
             self.item_warn("unexpected input extension", ext=item_ext)
+            self.item_give_up("unexpected-extension")
             return None
 
         # Check out the target refs file
@@ -323,6 +353,7 @@ The fulltext filenames typically are in one of these forms:
         # TODO: this is where classic guesses the bibcode and subdate if needed.
         if bibcode is None:
             self.item_warn("TEMP bailing because no bibcode")
+            self.item_give_up("bibcode-unimplemented")
             return None
 
         wrote_refs = False
@@ -342,6 +373,7 @@ The fulltext filenames typically are in one of these forms:
                 "TEMP bailing because we can only TeX and that didn't work",
                 is_pdf=is_pdf,
             )
+            self.item_give_up("pdf-unimplemented")
             return None
 
         return tr_path
