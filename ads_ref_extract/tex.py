@@ -228,7 +228,18 @@ def _postprocess_one_ref(ref: str) -> str:
     return ref
 
 
-_REF_EXTRA_OPENING = r"\newpage\onecolumn\section*{}$<$r$>$\sloppy\raggedright"
+_REF_EXTRA_OPENING = r"""
+\newpage
+\onecolumn
+\section*{}
+\sloppy
+\raggedright
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
+\def\UrlBreaks{}
+\def\UrlBigBreaks{}
+\def\UrlNoBreaks{\do\:\do\-}
+$<$r$>$"""
 _REF_EXTRA_CLOSING = r"$<$/r$>$"
 _OUTPUT_WRITTEN_REGEX = re.compile(rb"Output written on (.*) \(")
 
