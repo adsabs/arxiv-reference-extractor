@@ -462,7 +462,8 @@ class TexSourceItem(object):
                     )
                 return []
         except FileNotFoundError:
-            session.item_warn(
+            # This isn't a warning -- this will happen often in regular operations
+            session.item_trace1(
                 "expected TeX output file not found", pmain=self.path, ppdf=pdf_path
             )
             return []
