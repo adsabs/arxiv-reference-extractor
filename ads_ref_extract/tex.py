@@ -12,6 +12,7 @@ External tools used:
 
 import argparse
 import binaryornot.check
+import chardet
 import os
 from pathlib import Path
 import re
@@ -168,6 +169,40 @@ def _extract_inner(
     return True
 
 
+def _file_lines(
+    p: Path, session: CompatExtractor
+) -> Tuple[Optional[str], Optional[List[str]]]:
+    """
+    Read lines from a text file, guessing its encoding.
+
+    Returns either a list of strings, representing the file line content, or
+    None if we couldn't parse this file as text. The strings do not include line
+    endings.
+
+    This API is gross because we're working around rough edges in `chardet`.
+    I've found that its incremental detection sometimes fails when
+    whole-file-at-once succeeds, so we need to have everything in memory.
+    """
+
+    with open(p, "rb") as f:
+        data = f.read()
+
+    try:
+        enc = "utf-8"
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        result = chardet.detect(data)
+        enc = result.get("encoding")
+        session.item_info("guessed text file encoding", p=p, **result)
+
+        if enc is None or result.get("confidence") < 0.5:
+            return None, None
+
+        text = data.decode(enc)
+
+    return enc, text.splitlines()
+
+
 _START_REFS_REGEX = re.compile(
     r"\\begin\s*\{(chapthebibliography|thebibliography|references)\}", re.IGNORECASE
 )
@@ -302,8 +337,12 @@ class TexSourceItem(object):
             re.IGNORECASE,
         )
 
-        with open(self.path, "rt") as f_in, NamedTemporaryFile(
-            mode="wt", dir=self.path.parent, delete=False
+        enc, in_lines = _file_lines(self.path, session)
+        assert in_lines is not None, "encoding detection failed second time??"
+        in_lines = iter(in_lines)  # ensure that our loops progress through the list
+
+        with NamedTemporaryFile(
+            mode="wt", encoding=enc, dir=self.path.parent, delete=False
         ) as f_out:
             s = str(self.path).lower()
 
@@ -312,8 +351,8 @@ class TexSourceItem(object):
                 # section
                 pass
             else:
-                for line in f_in:
-                    print(line, end="", file=f_out)
+                for line in in_lines:
+                    print(line, file=f_out)
                     if _START_REFS_REGEX.search(line) is not None:
                         break
 
@@ -322,7 +361,7 @@ class TexSourceItem(object):
             ref_type = ""
             n_tagged = 0
 
-            for line in f_in:
+            for line in in_lines:
                 s = line.strip()
                 if not s or s.startswith("%"):
                     continue
@@ -336,7 +375,7 @@ class TexSourceItem(object):
                         n_tagged += 1
                         cur_ref = ""
 
-                    print(line, end="", file=f_out)
+                    print(line, file=f_out)
                     break
 
                 # TODO: extractrefs.pl does this; not sure about the value:
@@ -363,14 +402,14 @@ class TexSourceItem(object):
                     cur_ref += line
                 else:
                     # Still looking for the actual bib items
-                    print(line, end="", file=f_out)
+                    print(line, file=f_out)
 
             if cur_ref:
                 self.tag_ref(tag, cur_ref, ref_type, f_out)
                 n_tagged += 1
 
-            for line in f_in:
-                print(line, end="", file=f_out)
+            for line in in_lines:
+                print(line, file=f_out)
 
         # All done!
         session.item_trace1("finished munging a file", n_tagged=n_tagged, p=self.path)
@@ -577,50 +616,55 @@ def _probe_one_source(
     session.item_trace2("scanning potential TeX source", p=filepath)
 
     try:
-        # TODO: guess encoding?
-        with filepath.open("rt") as f:
-            for line in f:
-                if "%auto-ignore" in line:
-                    item.ignore = True
-                    break
+        _enc, lines = _file_lines(filepath, session)
+        if lines is None:
+            session.item_warn(
+                "failed to interpret potential TeX source as text", p=filepath
+            )
+            return None
 
-                if _match_any(line, _LATEX_DOCCLASS_REGEXES) is not None:
-                    item.fmt = "latex"
-                    item.score += 1
+        for line in lines:
+            if "%auto-ignore" in line:
+                item.ignore = True
+                break
 
-                if _match_any(line, _TEX_MAIN_FILE_REGEXES) is not None:
-                    item.score += 1
-                    continue
+            if _match_any(line, _LATEX_DOCCLASS_REGEXES) is not None:
+                item.fmt = "latex"
+                item.score += 1
 
-                m = re.match(r"^\s*\\shorttitle\s*\{(.*)\}", line, re.IGNORECASE)
-                if m is not None:
-                    item.title = m[1]
-                    item.score += 1
-                    continue
+            if _match_any(line, _TEX_MAIN_FILE_REGEXES) is not None:
+                item.score += 1
+                continue
 
-                m = re.match(
-                    r"^\s*\\newcommand\s*\{\\([^\}]+)\}.*?\{\\bibitem\b",
-                    line,
-                    re.IGNORECASE,
-                )
-                if m is not None:
-                    item.bibitem = m[1]
-                    continue
+            m = re.match(r"^\s*\\shorttitle\s*\{(.*)\}", line, re.IGNORECASE)
+            if m is not None:
+                item.title = m[1]
+                item.score += 1
+                continue
 
-                m = re.match(r"^\s*\\def\{?\\(.+?)\{\\bibitem\b", line, re.IGNORECASE)
-                if m is not None:
-                    item.bibitem = m[1]
-                    continue
+            m = re.match(
+                r"^\s*\\newcommand\s*\{\\([^\}]+)\}.*?\{\\bibitem\b",
+                line,
+                re.IGNORECASE,
+            )
+            if m is not None:
+                item.bibitem = m[1]
+                continue
 
-                m = re.match(r"^\s*\\input\{\s*(\S*?)\s*\}", line)
-                if m is not None:
-                    non_main_files.add(m[1])
-                    continue
+            m = re.match(r"^\s*\\def\{?\\(.+?)\{\\bibitem\b", line, re.IGNORECASE)
+            if m is not None:
+                item.bibitem = m[1]
+                continue
 
-                m = re.match(r"^\s*\\input\s+(\S*?)", line)
-                if m is not None:
-                    non_main_files.add(m[1])
-                    continue
+            m = re.match(r"^\s*\\input\{\s*(\S*?)\s*\}", line)
+            if m is not None:
+                non_main_files.add(m[1])
+                continue
+
+            m = re.match(r"^\s*\\input\s+(\S*?)", line)
+            if m is not None:
+                non_main_files.add(m[1])
+                continue
     except Exception as e:
         session.item_warn("failed to scan potential TeX source", p=filepath, e=e)
         return None
