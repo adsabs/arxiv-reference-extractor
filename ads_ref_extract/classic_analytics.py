@@ -597,13 +597,21 @@ class ClassicSessionReprocessor(object):
             print(f"inner stderr captured to `{stderr_path}`", file=sys.stderr)
 
         # Setup: input processing specification. Copy the source file to the output
-        # directory to make it simple to do analytics on later.
+        # directory to make it simple to do analytics on later. While we're at it,
+        # we can figure out how many items there are to process.
 
         source_input_path = (
             self.config.classic_session_log_path(session_id) / "fulltextharvest.out"
         )
         input_path = logs_out_dir / "fulltextharvest.out"
-        shutil.copyfile(source_input_path, input_path)
+        n_to_do = 0
+
+        with open(source_input_path, "rt") as f_in, open(input_path, "wt") as f_out:
+            for line in f_in:
+                n_to_do += 1
+                print(line, end="", file=f_out)
+
+        print(f"number of items to process: {n_to_do}", file=sys.stderr)
 
         # Setup: inner environment. (This is mostly paranoia to avoid writing to
         # the production filesystem.)
