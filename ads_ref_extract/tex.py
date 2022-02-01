@@ -472,6 +472,7 @@ class TexSourceItem(object):
             subprocess.run(
                 command,
                 shell=False,
+                stdin=subprocess.DEVNULL,
                 stdout=tex_stdout,
                 stderr=tex_stderr,
                 timeout=100,
