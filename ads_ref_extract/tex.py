@@ -412,12 +412,19 @@ class TexSourceItem(object):
             str(self.path),
         ]
 
+        if session.debug_tex:
+            tex_stdout = sys.stderr.buffer
+            tex_stderr = subprocess.STDOUT
+        else:
+            tex_stdout = subprocess.DEVNULL
+            tex_stderr = subprocess.DEVNULL
+
         try:
             subprocess.run(
                 command,
                 shell=False,
-                stdout=subprocess.DEVNULL,  # temporary??
-                stderr=subprocess.DEVNULL,  # temporary??
+                stdout=tex_stdout,
+                stderr=tex_stderr,
                 timeout=100,
                 check=True,
             )

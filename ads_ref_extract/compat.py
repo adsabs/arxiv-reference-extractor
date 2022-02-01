@@ -64,6 +64,9 @@ class CompatExtractor(object):
     skip_refs = False
     "If true, don't actually write out the new ('target') reference file."
 
+    debug_tex = False
+    "If true, print TeX's output (which can be voluminous)."
+
     @classmethod
     def new_from_commandline(cls, argv=sys.argv):
         parser = argparse.ArgumentParser(
@@ -124,6 +127,11 @@ The fulltext filenames typically are in one of these forms:
             type=int,
             help="Activate more detailed tracing",
         )
+        parser.add_argument(
+            "--debug-tex",
+            action="store_true",
+            help="Print TeX's output (can be voluminous)",
+        )
 
         settings = parser.parse_args(argv[1:])
 
@@ -174,6 +182,7 @@ The fulltext filenames typically are in one of these forms:
         inst.no_harvest = settings.no_harvest or settings.no_pdf
         inst.no_pdf = settings.no_pdf
         inst.skip_refs = settings.skip_refs
+        inst.debug_tex = settings.debug_tex
         return inst
 
     def process(self, stream=sys.stdin):
