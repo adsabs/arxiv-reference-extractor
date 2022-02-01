@@ -31,6 +31,7 @@ def extract_references(
     ft_path: Path,
     tr_path: Path,
     bibcode: str,
+    workdir: Optional[Path] = None,
 ) -> bool:
     """
     Extract references from an Arxiv TeX source package.
@@ -45,6 +46,10 @@ def extract_references(
         The absolute path of the target output references file
     bibcode : str
         The bibcode associated with the ArXiv submission
+    workdir : optional Path
+        If provided, do the extraction and processing in the specified
+        directory. Otherwise, do it in a temporary directory that is
+        deleted at the end of processing.
 
     Returns
     -------
@@ -57,9 +62,13 @@ def extract_references(
     orig_dir = os.getcwd()
 
     try:
-        with TemporaryDirectory() as tmpdir:
-            os.chdir(tmpdir)
+        if workdir is not None:
+            os.chdir(workdir)
             return _extract_inner(session, ft_path, tr_path, bibcode)
+        else:
+            with TemporaryDirectory() as tmpdir:
+                os.chdir(tmpdir)
+                return _extract_inner(session, ft_path, tr_path, bibcode)
     finally:
         os.chdir(orig_dir)
 

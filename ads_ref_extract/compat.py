@@ -67,6 +67,9 @@ class CompatExtractor(object):
     debug_tex = False
     "If true, print TeX's output (which can be voluminous)."
 
+    debug_source_files_dir: Optional[Path] = None
+    "If set, a directory where unpacked/munged source files will be preserved."
+
     @classmethod
     def new_from_commandline(cls, argv=sys.argv):
         parser = argparse.ArgumentParser(
@@ -125,12 +128,19 @@ The fulltext filenames typically are in one of these forms:
         parser.add_argument(
             "--trace",
             type=int,
-            help="Activate more detailed tracing",
+            metavar="NUMBER",
+            help="Activate more detailed tracing (if NUMBER > 1)",
         )
         parser.add_argument(
             "--debug-tex",
             action="store_true",
             help="Print TeX's output (can be voluminous)",
+        )
+        parser.add_argument(
+            "--debug-sourcefiles",
+            type=Path,
+            metavar="DIRECTORY",
+            help="Keep unpacked/munged source files in DIRECTORY",
         )
 
         settings = parser.parse_args(argv[1:])
@@ -183,6 +193,7 @@ The fulltext filenames typically are in one of these forms:
         inst.no_pdf = settings.no_pdf
         inst.skip_refs = settings.skip_refs
         inst.debug_tex = settings.debug_tex
+        inst.debug_source_files_dir = settings.debug_sourcefiles
         return inst
 
     def process(self, stream=sys.stdin):
@@ -318,7 +329,8 @@ The fulltext filenames typically are in one of these forms:
                 self._failure_reason = "N/A"
         except Exception as e:
             tr_path = None
-            self.item_warn("unhandled exception", e=e)
+            self.item_warn("unhandled exception", e=e, c=e.__class__.__name__)
+            self.logger.warning("detailed traceback:", exc_info=sys.exc_info())
             outcome = "fail"
             exception = True
             self._failure_reason = "unhandled-exception"
@@ -380,10 +392,22 @@ The fulltext filenames typically are in one of these forms:
         wrote_refs = False
 
         if not is_pdf:
+            if self.debug_source_files_dir is None:
+                workdir = None
+            else:
+                import shutil
+
+                workdir = self.debug_source_files_dir / item_stem.replace("/", "_")
+                shutil.rmtree(workdir, ignore_errors=True)
+                workdir.mkdir()
+                self.item_trace1("preserving source files", p=workdir)
+
             try:
                 from . import tex
 
-                wrote_refs = tex.extract_references(self, ft_path, tr_path, bibcode)
+                wrote_refs = tex.extract_references(
+                    self, ft_path, tr_path, bibcode, workdir=workdir
+                )
             except Exception as e:
                 self.item_warn("TeX extraction raised", e=e, c=e.__class__.__name__)
                 self.logger.warning("detailed traceback:", exc_info=sys.exc_info())
