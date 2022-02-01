@@ -71,6 +71,9 @@ class CompatExtractor(object):
     debug_source_files_dir: Optional[Path] = None
     "If set, a directory where unpacked/munged source files will be preserved."
 
+    debug_pdftotext = False
+    "If true, print pdftotext output."
+
     @classmethod
     def new_from_commandline(cls, argv=sys.argv):
         parser = argparse.ArgumentParser(
@@ -143,6 +146,11 @@ The fulltext filenames typically are in one of these forms:
             metavar="DIRECTORY",
             help="Keep unpacked/munged source files in DIRECTORY",
         )
+        parser.add_argument(
+            "--debug-pdftotext",
+            action="store_true",
+            help="Print pdftotext output",
+        )
 
         settings = parser.parse_args(argv[1:])
 
@@ -195,6 +203,7 @@ The fulltext filenames typically are in one of these forms:
         inst.skip_refs = settings.skip_refs
         inst.debug_tex = settings.debug_tex
         inst.debug_source_files_dir = settings.debug_sourcefiles
+        inst.debug_pdftotext = settings.debug_pdftotext
         return inst
 
     def process(self, stream=sys.stdin):

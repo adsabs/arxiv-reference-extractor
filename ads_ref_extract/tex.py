@@ -130,7 +130,8 @@ def _extract_inner(
         return False
 
     # Try compiling and seeing if we can pull out the refs
-    refs = sources.extract_refs(session, dump_text=(until == "pdftotext"))
+    dump_text = (until == "pdftotext") or session.debug_pdftotext
+    refs = sources.extract_refs(session, dump_text=dump_text)
     if until == "extract" or until == "pdftotext":
         if not refs:
             session.item_info("extract-only mode: no references extracted")
