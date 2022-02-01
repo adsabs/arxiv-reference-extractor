@@ -117,7 +117,12 @@ The fulltext filenames typically are in one of these forms:
         parser.add_argument(
             "--debug",
             action="store_true",
-            help="Print debugging information",
+            help="Print debugging (trace level 1) information",
+        )
+        parser.add_argument(
+            "--trace",
+            type=int,
+            help="Activate more detailed tracing",
         )
 
         settings = parser.parse_args(argv[1:])
@@ -134,8 +139,15 @@ The fulltext filenames typically are in one of these forms:
         )
         default_logger.addHandler(handler)
 
+        if settings.trace:
+            settings.debug = True
+        elif settings.debug:
+            settings.trace = 1
+        else:
+            settings.trace = 0
+
         if settings.debug:
-            default_logger.setLevel(logging.DEBUG)
+            default_logger.setLevel(logging.DEBUG + 1 - settings.trace)
         else:
             default_logger.setLevel(logging.INFO)
 
