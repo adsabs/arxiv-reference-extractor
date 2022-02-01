@@ -567,7 +567,7 @@ def _probe_one_source(
         item.score += 1
     elif s.endswith(".bib") or s.endswith(".bbl"):
         pass
-    elif s.endswith(".txt") or not s.startswith("."):
+    elif s.endswith(".txt") or "." not in s:
         pass
     else:
         return None
