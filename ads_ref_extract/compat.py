@@ -34,6 +34,7 @@ import argparse
 import logging
 from pathlib import Path
 import sys
+import time
 from typing import Optional
 
 from .config import Config
@@ -198,6 +199,7 @@ The fulltext filenames typically are in one of these forms:
 
     def process(self, stream=sys.stdin):
         self.logger.info("using the new Python extractrefs")
+        t0 = time.time()
         n_inputs = 0
         n_failures = 0
 
@@ -226,7 +228,14 @@ The fulltext filenames typically are in one of these forms:
             else:
                 print(preprint_path, target_ref_path)
 
+        elapsed = time.time() - t0
+
         self.logger.info(f"processed {n_inputs} items")
+        if n_inputs:
+            rate = elapsed / n_inputs
+            self.logger.info(
+                f"elapsed time {elapsed:.0f}; processing rate: {rate:.1f} seconds per item"
+            )
         if n_failures:
             self.logger.info(f"{n_failures} items could not be processed")
         return 0
