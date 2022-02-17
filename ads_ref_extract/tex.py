@@ -207,6 +207,8 @@ def _file_lines(
 _START_REFS_REGEX = re.compile(
     r"\\begin\s*\{(chapthebibliography|thebibliography|references)\}", re.IGNORECASE
 )
+_HEX_CHARS = "0123456789abcdefABCDEF"
+_FORCED_NEWLINE_REGEX = re.compile(r"\\bibitem|\\reference|\\end\{", re.IGNORECASE)
 _END_REFS_REGEX = re.compile(
     r"^\s*\\end\s*\{(chapthebibliography|thebibliography|references)\}", re.IGNORECASE
 )
@@ -358,15 +360,49 @@ class TexSourceItem(object):
                     if _START_REFS_REGEX.search(line) is not None:
                         break
 
+            line_in_progress = ""
             tag = None
             cur_ref = ""
             ref_type = ""
             n_tagged = 0
 
             for line in in_lines:
-                s = line.strip()
-                if not s or s.startswith("%"):
-                    continue
+                # High-level processing of whitespace and comments. Collapsing
+                # comments can make a big difference for \bibitem commands that
+                # are sometimes split across lines in "exciting" ways. On the
+                # other hand, other sources use %'s aggressively such that if we
+                # don't force some line splits, our line-based parser will fail.
+
+                line = line_in_progress + line
+                line_in_progress = ""
+
+                try:
+                    cidx = line.index("%")
+                except ValueError:
+                    pass
+                else:
+                    # When is a percent not a comment?
+                    # - When it's \%
+                    # - Inside a \href where it's acting as percent-encoding
+                    # - Surely other cases to be added, as well
+                    if (
+                        len(line) > cidx + 2
+                        and line[cidx + 1] in _HEX_CHARS
+                        and line[cidx + 2] in _HEX_CHARS
+                    ):
+                        pass
+                    elif cidx == 0:
+                        # Note: we need to remove all comments so that our </r>s
+                        # make it into the output
+                        continue
+                    elif line[cidx - 1] != "\\":
+                        line_in_progress = line[:cidx] + " "
+                        continue
+
+                m = _FORCED_NEWLINE_REGEX.search(line[1:])
+                if m is not None:
+                    line_in_progress = line[m.start() + 1 :]
+                    line = line[: m.start() + 1]
 
                 # TODO: implement {\em ...} munging here.
 
@@ -409,6 +445,9 @@ class TexSourceItem(object):
             if cur_ref:
                 self.tag_ref(tag, cur_ref, ref_type, f_out)
                 n_tagged += 1
+
+            if line_in_progress:
+                print(line_in_progress, file=f_out)
 
             for line in in_lines:
                 print(line, file=f_out)
