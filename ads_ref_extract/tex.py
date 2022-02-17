@@ -283,6 +283,7 @@ def _postprocess_one_ref(ref: str) -> str:
 
 _REF_EXTRA_OPENING = r"""
 \newpage
+\providecommand{\onecolumn}{\relax}
 \onecolumn
 \section*{}
 \sloppy
