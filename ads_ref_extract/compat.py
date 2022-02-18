@@ -398,7 +398,7 @@ The fulltext filenames typically are in one of these forms:
         tr_path = self.config.target_refs_base / f"{item_stem}.raw"
 
         if not tr_path.exists():
-            self.item_trace1("creating output target-ref file", tr_path=tr_path)
+            self.item_trace1("need to create output target-ref file", tr_path=tr_path)
         elif tr_path.stat().st_mtime < ft_path.stat().st_mtime:
             self.item_trace1("output target-ref file needs updating", tr_path=tr_path)
         elif self.force:
