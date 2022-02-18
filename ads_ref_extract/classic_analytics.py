@@ -335,10 +335,10 @@ def compare_outcomes(
     stems = set(A_results.keys())
     stems.update(B_results.keys())
 
+    failures = set()
     regressions = set()
     fixes = set()
     n_preserves = 0
-    n_fails = 0
     n_ignored_pdfs = 0
 
     for stem in stems:
@@ -351,7 +351,7 @@ def compare_outcomes(
 
         if A_path is None:
             if B_path is None:
-                n_fails += 1
+                failures.add(stem)
             else:
                 fixes.add(stem)
         elif B_path is None:
@@ -360,6 +360,12 @@ def compare_outcomes(
             n_preserves += 1
 
     # Emit
+
+    if failures:
+        yield "Failed in both runs:\n"
+        for stem in sorted(failures):
+            yield f"    {stem}\n"
+        yield "\n"
 
     if fixes:
         yield "Fixed:\n"
@@ -376,7 +382,7 @@ def compare_outcomes(
     yield f">>> {len(fixes)} fixed items\n"
     yield f">>> {len(regressions)} regressed items\n"
     yield f">>> {n_preserves} preserved successes\n"
-    yield f">>> {n_fails} unfixed failures\n"
+    yield f">>> {len(failures)} unfixed failures\n"
 
     if ignore_pdfonly:
         yield f">>> {n_ignored_pdfs} ignored PDF-only items\n"
