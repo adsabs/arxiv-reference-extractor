@@ -239,7 +239,10 @@ The fulltext filenames typically are in one of these forms:
 
             target_ref_path = self.process_one(preprint_path, bibcode)
 
-            if target_ref_path is None:
+            if target_ref_path == "withdrawn":
+                # No refs to extract, but not a failure either:
+                print(preprint_path)
+            elif target_ref_path is None:
                 print(preprint_path)
                 n_failures += 1
             else:
@@ -337,7 +340,8 @@ The fulltext filenames typically are in one of these forms:
         Process a single preprint.
 
         Returns the path to the newly created reference file if the preprint was
-        processed successfully. Returns None if it couldn't be processed.
+        processed successfully, or "withdrawn" for a withdrawn item. Returns
+        None if it couldn't be processed.
         """
         item_stem, item_ext = split_item_path(preprint_path)
         item_id = item_stem  # might tweak this later
@@ -431,12 +435,24 @@ The fulltext filenames typically are in one of these forms:
             try:
                 from . import tex
 
-                wrote_refs = tex.extract_references(
+                outcome = tex.extract_references(
                     self, ft_path, tr_path, bibcode, workdir=workdir
                 )
 
-                if not wrote_refs:
-                    self.item_info("TeX-based extraction failed")
+                if isinstance(outcome, int):
+                    if outcome < 0:
+                        self.item_info("TeX-based extraction failed")
+                    else:
+                        wrote_refs = True
+                elif isinstance(outcome, str):
+                    if outcome == "withdrawn":
+                        # This is sort of a failure, but not one we can do
+                        # anything about.
+                        return "withdrawn"
+                    else:
+                        raise Exception(f"unexpected outcome string `{outcome}`")
+                else:
+                    raise NotImplementedError()
             except Exception as e:
                 self.item_warn("TeX extraction raised", e=e, c=e.__class__.__name__)
                 self.logger.warning("detailed traceback:", exc_info=sys.exc_info())

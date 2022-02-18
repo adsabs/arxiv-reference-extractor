@@ -330,6 +330,25 @@ def compare_outcomes(
         (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger)
     )
 
+    # Set up to deal with withdrawals. They're not failures, but they can't
+    # produce references.
+
+    er1 = A_config.classic_session_log_path(session_id) / "extractrefs.stderr"
+    er2 = B_config.classic_session_log_path(session_id) / "extractrefs.stderr"
+
+    for log in (er1, er2):
+        if not log.exists():
+            continue
+
+        with log.open("rt") as f:
+            for line in f:
+                if "% withdrawn" not in line:
+                    continue
+
+                item = line.split("@i")[1].split()[0]
+                A_results[item] = ("tex.gz", "withdrawn")
+                B_results[item] = ("tex.gz", "withdrawn")
+
     # Do the high-level comparison
 
     stems = set(A_results.keys())

@@ -20,7 +20,7 @@ import shutil
 import subprocess
 import sys
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import Generator, List, Optional, Tuple
+from typing import Generator, List, Optional, Tuple, Union
 
 from .compat import CompatExtractor
 
@@ -33,7 +33,7 @@ def extract_references(
     tr_path: Path,
     bibcode: str,
     workdir: Optional[Path] = None,
-) -> bool:
+) -> Union[int, str]:
     """
     Extract references from an Arxiv TeX source package.
 
@@ -49,16 +49,22 @@ def extract_references(
         The bibcode associated with the ArXiv submission
     workdir : optional Path
         If provided, do the extraction and processing in the specified
-        directory. Otherwise, do it in a temporary directory that is
-        deleted at the end of processing.
+        directory. Otherwise, do it in a temporary directory that is deleted at
+        the end of processing.
 
     Returns
     -------
-    Whether references were successfully extracted.
+    If a nonnegative integer, the number of references extracted. This indicates
+    successful extraction. If the ``skip_refs`` session setting is false, the
+    reference strings will have been written into ``tr_path``. If the return
+    value is a negative integer, extraction failed. If it is the string
+    ``"withdrawn"``, the item was withdrawn and so there are no references to
+    extract.
 
     Notes
     -----
-    This function will change its working directory, so the input paths must be absolute.
+    This function will change its working directory, so the input paths must be
+    absolute.
     """
     orig_dir = os.getcwd()
 
@@ -80,7 +86,7 @@ def _extract_inner(
     tr_path: Path,
     bibcode: str,
     until: Optional[str] = None,
-) -> bool:
+) -> Union[int, str]:
     """
     The main extraction implementation, called with the CWD set to a new
     temporary directory.
@@ -113,7 +119,7 @@ def _extract_inner(
 
     if until == "unpack":
         session.item_give_up("stop-at-unpack")
-        return False
+        return "earlyexit"  # NB, this should never escape to `extract_references()`
 
     # NOTE: classic used to use the submission date to determine which TeX stack
     # to use.
@@ -124,10 +130,12 @@ def _extract_inner(
 
     # Munge the TeX sources to help us find references. Note that at this point
     # we still don't know what the main source file is!
-    sources.munge_refs(session)
+    if sources.munge_refs(session):
+        return "withdrawn"  # This indicates that this item was withdrawn
+
     if until == "munge":
         session.item_give_up("stop-at-munge")
-        return False
+        return "earlyexit"
 
     # Try compiling and seeing if we can pull out the refs
     dump_text = (until == "pdftotext") or session.debug_pdftotext
@@ -141,7 +149,7 @@ def _extract_inner(
                 session.item_info("     ref:", r=ref)
 
         session.item_give_up("stop-at-extract")
-        return False
+        return "earlyexit"
 
     # TODO(?): "see if changing the source .tex to include PDF files helps"
     # This changed .eps includes to .pdf and converted the corresponding files,
@@ -150,14 +158,14 @@ def _extract_inner(
     if not refs:
         # If we're here, something inside extract_refs() should have called item_give_up()
         session.item_info("unable to extract references from TeX source")
-        return False
+        return -1
 
     session.item_info("success getting refs from TeX", n=len(refs))
 
     if session.skip_refs:
         session.item_trace2("skipping writing references")
         session.item_give_up("skip-refs")
-        return False
+        return len(refs)
 
     tr_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -167,7 +175,7 @@ def _extract_inner(
         for ref in refs:
             print(ref, file=f)
 
-    return True
+    return len(refs)
 
 
 def _file_lines(
@@ -782,13 +790,27 @@ class TexSources(object):
         return inst
 
     def munge_refs(self, session: CompatExtractor):
+        """
+        Returns True if the submission was withdrawn, which is indicated by a
+        single source file marked with %auto-ignore. This could be detected
+        earlier but currently this is a convenient place for the check.
+        """
+
         n_total = 0
 
         for item in self.items:
             n_total += item.munge_refs(session)
 
         if n_total == 0:
-            session.item_warn("didn't find anything to munge")
+            if len(self.items) == 1 and self.items[0].ignore:
+                # We don't classify this as a give-up because it's not a
+                # failure; there's nothing to do.
+                session.item_info("withdrawn")
+                return True
+            else:
+                session.item_warn("didn't find anything to munge")
+
+        return False
 
     def extract_refs(self, session: CompatExtractor, dump_text=False) -> List[str]:
         for item in self.items:
