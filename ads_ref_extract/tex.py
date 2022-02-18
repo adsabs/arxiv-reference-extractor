@@ -295,8 +295,8 @@ _REF_EXTRA_OPENING = r"""
 \def\UrlBreaks{}
 \def\UrlBigBreaks{}
 \def\UrlNoBreaks{\do\:\do\-}
-$<$r$>$"""
-_REF_EXTRA_CLOSING = r"$<$/r$>$"
+{\textless}r{\textgreater}"""
+_REF_EXTRA_CLOSING = r"{\textless}/r{\textgreater}"
 _OUTPUT_WRITTEN_REGEX = re.compile(rb"Output written on (.*) \(")
 
 
