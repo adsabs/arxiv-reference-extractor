@@ -33,6 +33,7 @@ the FULLTEXT-PATH was absolutified, and sometimes not.
 import argparse
 import logging
 from pathlib import Path
+import subprocess
 import sys
 import time
 from typing import Optional
@@ -73,6 +74,8 @@ class CompatExtractor(object):
 
     debug_pdftotext = False
     "If true, print pdftotext output."
+
+    pdf_helper: Path = None
 
     @classmethod
     def new_from_commandline(cls, argv=sys.argv):
@@ -204,6 +207,11 @@ The fulltext filenames typically are in one of these forms:
         inst.debug_tex = settings.debug_tex
         inst.debug_source_files_dir = settings.debug_sourcefiles
         inst.debug_pdftotext = settings.debug_pdftotext
+
+        # Not currently configurable, but it could be.
+        inst.pdf_helper = (
+            Path(__file__).parent.parent / "classic" / "extract_one_pdf.pl"
+        )
         return inst
 
     def process(self, stream=sys.stdin):
@@ -426,18 +434,56 @@ The fulltext filenames typically are in one of these forms:
                 wrote_refs = tex.extract_references(
                     self, ft_path, tr_path, bibcode, workdir=workdir
                 )
+
+                if not wrote_refs:
+                    self.item_info("TeX-based extraction failed")
             except Exception as e:
                 self.item_warn("TeX extraction raised", e=e, c=e.__class__.__name__)
                 self.logger.warning("detailed traceback:", exc_info=sys.exc_info())
 
         if not wrote_refs:
-            #  This is where we should do stuff with PDFs!
-            self.item_warn(
-                "TEMP bailing because we can only TeX and that didn't work",
+            # For now (?), farm out to the classic Perl implementation to try to
+            # extract refs from the PDF.
+            self.item_info(
+                "attempting Perl-based PDF reference extraction",
                 is_pdf=is_pdf,
             )
-            self.item_give_up("pdf-unimplemented")
-            return None
+
+            if is_pdf:
+                pdf_path = ft_path
+            else:
+                pdf_path = self.config.fulltext_base / f"{item_stem}.pdf"
+
+            if not pdf_path.exists():
+                self.item_warn("cannot find expected PDF", pdf_path=pdf_path)
+                self.item_give_up("missing-pdf")
+                return None
+
+            tr_path.parent.mkdir(parents=True, exist_ok=True)
+            argv = [str(self.pdf_helper), str(pdf_path), str(tr_path), bibcode]
+            self.item_trace1("invoking Perl extractor", argv=argv)
+
+            try:
+                subprocess.run(
+                    argv,
+                    shell=False,
+                    stdin=subprocess.DEVNULL,
+                    stdout=sys.stderr.buffer,
+                    stderr=subprocess.STDOUT,
+                    check=True,
+                )
+            except subprocess.CalledProcessError as e:
+                self.item_warn("PDF extraction failed", argv=argv, e=e)
+            except Exception as e:
+                self.item_warn(
+                    "unexpected failure when trying PDF extraction", argv=argv, e=e
+                )
+
+            if tr_path.exists():
+                self.item_info("Perl-based extraction seems to have worked")
+            else:
+                self.item_info("Perl-based extraction didn't create its output")
+                return None
 
         return tr_path
 
