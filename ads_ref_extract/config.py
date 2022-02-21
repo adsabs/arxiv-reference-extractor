@@ -41,8 +41,7 @@ class Config(object):
     """
     Where to look for old log files when analyzing previous sessions -- *not*
     where new logfiles are created. This setting isn't actually used when doing
-    new processing. Defaults to ``$ADS_ARXIVREFS_LOGS`` if defined, or
-    ``$ADS_ABSTRACTS/sources/ArXiv/log`` if not.
+    new processing. Defaults to ``$ADS_ABSTRACTS/sources/ArXiv/log``.
     """
 
     @classmethod
@@ -55,10 +54,7 @@ class Config(object):
         references = Path(os.environ.get("ADS_REFERENCES", "/proj/ads/references"))
 
         inst = cls()
-
-        inst.logs_base = _maybe_envpath("ADS_ARXIVREFS_LOGS")
-        if inst.logs_base is None:
-            inst.logs_base = abstracts / "sources" / "ArXiv" / "log"
+        inst.logs_base = abstracts / "sources" / "ArXiv" / "log"
 
         # NB: this must end in the string `fulltext` in order for some of the
         # log-parsing code to work correctly.
