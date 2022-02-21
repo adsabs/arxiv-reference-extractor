@@ -17,8 +17,13 @@ def _maybe_envpath(var_name: str) -> Path:
 
 
 class Config(object):
-    logs_base: Path = None
     fulltext_base: Path = None
+    """
+    Where to look for ArXiv fulltext sources. Defaults to
+    ``$ADS_ARXIVREFS_FULLTEXT`` if defined, or
+    ``$ADS_ABSTRACTS/sources/ArXiv/fulltext`` if not.
+    """
+
     target_refs_base: Path = None
     """
     Where new "target refs" files will be created during processing. Defaults to
@@ -26,6 +31,19 @@ class Config(object):
     """
 
     tex_bin_dir: Path = None
+    """
+    A directory to add to ``$PATH`` so that ``pdflatex`` can be found. Defaults
+    to ``/src/tex/bin/x86_64-linux``, which is the standard value for the
+    Dockerized version of this framework.
+    """
+
+    logs_base: Path = None
+    """
+    Where to look for old log files when analyzing previous sessions -- *not*
+    where new logfiles are created. This setting isn't actually used when doing
+    new processing. Defaults to ``$ADS_ARXIVREFS_LOGS`` if defined, or
+    ``$ADS_ABSTRACTS/sources/ArXiv/log`` if not.
+    """
 
     @classmethod
     def new_defaults(cls):

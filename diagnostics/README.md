@@ -118,4 +118,7 @@ you rerun it, it will resume where it left off, thanks to the local cache.
 
 A helper script that runs the extraction pipeline inside a Docker container. The
 parent of the directory containing this script is mounted as `/app` in the
-container, meaning that local modifications *will* take effect.
+container, meaning that local modifications *will* take effect. This is only
+invoked by `oneoff.sh`. The `repro.py` script uses the
+`ClassicSessionReprocessor` framework found in
+`ads_ref_extract.classic_analytics`.
