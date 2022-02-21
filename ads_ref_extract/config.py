@@ -6,7 +6,7 @@ modules in both standalone CLIs and the standard Celery environment.
 import os
 from pathlib import Path
 
-__all__ = ["Config"]
+__all__ = ["Config", "parse_dumb_config_file"]
 
 
 def _maybe_envpath(var_name: str) -> Path:
@@ -81,3 +81,26 @@ class Config(object):
 
         # Older sessions are archived by year.
         return self.logs_base / session_id.split("-")[0] / session_id
+
+
+def parse_dumb_config_file(path: str) -> dict:
+    """
+    Parse a very simpleminded configuration file. This function supports the
+    tools in the `../diagnostics` directory. The main design constraint here is
+    that the config file must be `source`-able in a Bourne shell. So, the format
+    is that variables are assigned with simple `name=value` syntax.
+    """
+    result = {}
+
+    with open(path, "rt") as f:
+        for line in f:
+            line = line.split("#")[0]
+            line = line.strip()
+
+            if not line:
+                continue
+
+            name, value = line.split("=", 1)
+            result[name] = value
+
+    return result

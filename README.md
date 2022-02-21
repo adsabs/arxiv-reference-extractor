@@ -18,18 +18,10 @@ to do with parsing pipeline logs to extract analytics about its performance.
 
 ## Launching the pipeline
 
-To unit-test in the Docker container, use commands like:
-
-```
-$ ./localtest.sh --pymod tex extract /proj/ads/abstracts/sources/ArXiv/fulltext/arXiv/2111/03186.tar.gz
-```
-
-To test the compatibility interface:
-
-```
-$ echo 'arXiv/2111/03160.tar.gz 2021arXiv211103160S X18-82393 20211107' \
-  |./localtest.sh --impl-python --debug --force --tbase /results/oneoffs/references/sources
-```
+To test locally, we recommend using the framework found in the `diagnostics/`
+subdirectory. Some modest configuration is required. You also need to have
+copies of ArXiv data organized according to ADS' system in order for the
+pipeline to be able to do anything useful.
 
 ## Maintainer(s)
 
