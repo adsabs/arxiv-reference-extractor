@@ -36,9 +36,9 @@ cfg.logs_base = Path(f"{diagnostics_cfg['results_dir']}/{tag}/logs")
 cfg.target_refs_base = Path(
     f"{diagnostics_cfg['results_dir']}/{tag}/references/sources"
 )
-cfg.resolved_refs_base = Path(str(cfg.target_refs_base).replace("sources", "resolved"))
 
-check_resolved = cfg.resolved_refs_base.exists()
+resolved_refs = Path(str(cfg.target_refs_base).replace("sources", "resolved"))
+check_resolved = resolved_refs.exists()
 
 info = classic_analytics.analyze_session(
     session_id, cfg, reconstruct_targets=True, check_resolved=check_resolved

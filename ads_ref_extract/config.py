@@ -20,7 +20,11 @@ class Config(object):
     logs_base: Path = None
     fulltext_base: Path = None
     target_refs_base: Path = None
-    resolved_refs_base: Path = None
+    """
+    Where new "target refs" files will be created during processing. Defaults to
+    ``$ADS_ARXIVREFS_REFOUT`` if defined, ``$ADS_REFERENCES/sources`` if not.
+    """
+
     tex_bin_dir: Path = None
 
     @classmethod
@@ -52,10 +56,6 @@ class Config(object):
         inst.target_refs_base = _maybe_envpath("ADS_ARXIVREFS_REFOUT")
         if inst.target_refs_base is None:
             inst.target_refs_base = references / "sources"
-
-        inst.resolved_refs_base = Path(
-            str(inst.target_refs_base).replace("sources", "resolved")
-        )
 
         # This assumes that we're running in the standard Docker container:
         inst.tex_bin_dir = Path("/src/tex/bin/x86_64-linux")
