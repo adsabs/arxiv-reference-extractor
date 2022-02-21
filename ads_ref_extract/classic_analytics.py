@@ -534,9 +534,6 @@ class ClassicSessionReprocessor(object):
     custom_app_dir = None
     "A local directory with a custom copy of the app to be mounted into the container."
 
-    impl_kind = "python"
-    "Which extractor implementation to use."
-
     capture_stderr = False
     "Whether stderr output should be saved to `extractrefs.stderr`"
 
@@ -581,10 +578,6 @@ class ClassicSessionReprocessor(object):
             "--name",
             f"arxiv_refextract_repro_{session_id}",
             "-v",
-            f"{self.config.abstracts_config_base}:/proj/ads/abstracts/config:ro,Z",
-            "-v",
-            f"{self.config.abstracts_links_base}:/proj/ads/abstracts/links:ro,Z",
-            "-v",
             f"{self.config.fulltext_base}:/virtual_abstracts/sources/ArXiv/fulltext:ro,Z",
             "-v",
             f"{self.config.target_refs_base}:/refs_out:rw,Z",
@@ -599,7 +592,7 @@ class ClassicSessionReprocessor(object):
             "-e",
             "ADS_REFERENCES",
             self.image_name,
-            f"--impl-{self.impl_kind}",
+            "/app/run.py",
             "--pbase",
             "/virtual_abstracts/sources/ArXiv/fulltext",
             "--tbase",

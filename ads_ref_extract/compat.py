@@ -36,7 +36,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
-from typing import Optional
+from typing import Optional, TextIO
 
 from .config import Config
 from .utils import split_item_path
@@ -53,6 +53,8 @@ class CompatExtractor(object):
 
     logger: logging.Logger = None
     "A logger"
+
+    input_stream: TextIO = (None,)
 
     force = False
     "Recreate target reference file even if it exists and is more recent than source."
@@ -80,6 +82,8 @@ class CompatExtractor(object):
     @classmethod
     def new_from_commandline(cls, argv=sys.argv):
         parser = argparse.ArgumentParser(
+            # Need to manually add help so that we can use `-h` ourselves!
+            add_help=False,
             epilog="""The program reads from stdin a table consisting of the
 fulltext e-print file (first column) and optionally its corresponding bibcode
 (second column), accno number (third column), and submission date (fourth
@@ -89,7 +93,16 @@ The fulltext filenames typically are in one of these forms:
     arXiv/0705/0161.tar.gz
     arXiv/0705/0160.pdf
     math/2006/0604548.tex.gz
-"""
+""",
+        )
+        parser.add_argument(
+            "--help", action="help", help="show this help message and exit"
+        )
+        parser.add_argument(
+            "--harvest-list",
+            "-h",
+            metavar="PATH",
+            help="Get items to process from the named file, rather than stdin",
         )
         parser.add_argument(
             "--pbase",
@@ -208,17 +221,25 @@ The fulltext filenames typically are in one of these forms:
         inst.debug_source_files_dir = settings.debug_sourcefiles
         inst.debug_pdftotext = settings.debug_pdftotext
 
+        if settings.harvest_list is not None:
+            inst.input_stream = open(settings.harvest_list)
+        else:
+            inst.input_stream = sys.stdin
+
         # Not currently configurable, but it could be.
         inst.pdf_helper = (
             Path(__file__).parent.parent / "classic" / "extract_one_pdf.pl"
         )
         return inst
 
-    def process(self, stream=sys.stdin):
+    def process(self, stream=None):
         self.logger.info("using the new Python extractrefs")
         t0 = time.time()
         n_inputs = 0
         n_failures = 0
+
+        if stream is None:
+            stream = self.input_stream
 
         for line in stream:
             pieces = line.strip().split()
@@ -504,7 +525,7 @@ The fulltext filenames typically are in one of these forms:
         return tr_path
 
 
-def entrypoint(argv=sys.argv, stream=sys.stdin):
+def entrypoint(argv=sys.argv, stream=None):
     sys.exit(CompatExtractor.new_from_commandline(argv).process(stream))
 
 
