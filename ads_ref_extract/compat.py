@@ -33,8 +33,10 @@ the FULLTEXT-PATH was absolutified, and sometimes not.
 import argparse
 import logging
 from pathlib import Path
+import subprocess
 import sys
-from typing import Optional
+import time
+from typing import Optional, TextIO
 
 from .config import Config
 from .utils import split_item_path
@@ -52,6 +54,8 @@ class CompatExtractor(object):
     logger: logging.Logger = None
     "A logger"
 
+    input_stream: TextIO = (None,)
+
     force = False
     "Recreate target reference file even if it exists and is more recent than source."
 
@@ -64,9 +68,22 @@ class CompatExtractor(object):
     skip_refs = False
     "If true, don't actually write out the new ('target') reference file."
 
+    debug_tex = False
+    "If true, print TeX's output (which can be voluminous)."
+
+    debug_source_files_dir: Optional[Path] = None
+    "If set, a directory where unpacked/munged source files will be preserved."
+
+    debug_pdftotext = False
+    "If true, print pdftotext output."
+
+    pdf_helper: Path = None
+
     @classmethod
     def new_from_commandline(cls, argv=sys.argv):
         parser = argparse.ArgumentParser(
+            # Need to manually add help so that we can use `-h` ourselves!
+            add_help=False,
             epilog="""The program reads from stdin a table consisting of the
 fulltext e-print file (first column) and optionally its corresponding bibcode
 (second column), accno number (third column), and submission date (fourth
@@ -76,7 +93,16 @@ The fulltext filenames typically are in one of these forms:
     arXiv/0705/0161.tar.gz
     arXiv/0705/0160.pdf
     math/2006/0604548.tex.gz
-"""
+""",
+        )
+        parser.add_argument(
+            "--help", action="help", help="show this help message and exit"
+        )
+        parser.add_argument(
+            "--harvest-list",
+            "-h",
+            metavar="PATH",
+            help="Get items to process from the named file, rather than stdin",
         )
         parser.add_argument(
             "--pbase",
@@ -117,7 +143,29 @@ The fulltext filenames typically are in one of these forms:
         parser.add_argument(
             "--debug",
             action="store_true",
-            help="Print debugging information",
+            help="Print debugging (trace level 1) information",
+        )
+        parser.add_argument(
+            "--trace",
+            type=int,
+            metavar="NUMBER",
+            help="Activate more detailed tracing (if NUMBER > 1)",
+        )
+        parser.add_argument(
+            "--debug-tex",
+            action="store_true",
+            help="Print TeX's output (can be voluminous)",
+        )
+        parser.add_argument(
+            "--debug-sourcefiles",
+            type=Path,
+            metavar="DIRECTORY",
+            help="Keep unpacked/munged source files in DIRECTORY",
+        )
+        parser.add_argument(
+            "--debug-pdftotext",
+            action="store_true",
+            help="Print pdftotext output",
         )
 
         settings = parser.parse_args(argv[1:])
@@ -134,8 +182,15 @@ The fulltext filenames typically are in one of these forms:
         )
         default_logger.addHandler(handler)
 
+        if settings.trace:
+            settings.debug = True
+        elif settings.debug:
+            settings.trace = 1
+        else:
+            settings.trace = 0
+
         if settings.debug:
-            default_logger.setLevel(logging.DEBUG)
+            default_logger.setLevel(logging.DEBUG + 1 - settings.trace)
         else:
             default_logger.setLevel(logging.INFO)
 
@@ -162,12 +217,29 @@ The fulltext filenames typically are in one of these forms:
         inst.no_harvest = settings.no_harvest or settings.no_pdf
         inst.no_pdf = settings.no_pdf
         inst.skip_refs = settings.skip_refs
+        inst.debug_tex = settings.debug_tex
+        inst.debug_source_files_dir = settings.debug_sourcefiles
+        inst.debug_pdftotext = settings.debug_pdftotext
+
+        if settings.harvest_list is not None:
+            inst.input_stream = open(settings.harvest_list)
+        else:
+            inst.input_stream = sys.stdin
+
+        # Not currently configurable, but it could be.
+        inst.pdf_helper = (
+            Path(__file__).parent.parent / "classic" / "extract_one_pdf.pl"
+        )
         return inst
 
-    def process(self, stream=sys.stdin):
+    def process(self, stream=None):
         self.logger.info("using the new Python extractrefs")
+        t0 = time.time()
         n_inputs = 0
         n_failures = 0
+
+        if stream is None:
+            stream = self.input_stream
 
         for line in stream:
             pieces = line.strip().split()
@@ -188,13 +260,23 @@ The fulltext filenames typically are in one of these forms:
 
             target_ref_path = self.process_one(preprint_path, bibcode)
 
-            if target_ref_path is None:
+            if target_ref_path == "withdrawn":
+                # No refs to extract, but not a failure either:
+                print(preprint_path)
+            elif target_ref_path is None:
                 print(preprint_path)
                 n_failures += 1
             else:
                 print(preprint_path, target_ref_path)
 
+        elapsed = time.time() - t0
+
         self.logger.info(f"processed {n_inputs} items")
+        if n_inputs:
+            rate = elapsed / n_inputs
+            self.logger.info(
+                f"elapsed time {elapsed:.0f}; processing rate: {rate:.1f} seconds per item"
+            )
         if n_failures:
             self.logger.info(f"{n_failures} items could not be processed")
         return 0
@@ -279,7 +361,8 @@ The fulltext filenames typically are in one of these forms:
         Process a single preprint.
 
         Returns the path to the newly created reference file if the preprint was
-        processed successfully. Returns None if it couldn't be processed.
+        processed successfully, or "withdrawn" for a withdrawn item. Returns
+        None if it couldn't be processed.
         """
         item_stem, item_ext = split_item_path(preprint_path)
         item_id = item_stem  # might tweak this later
@@ -297,7 +380,8 @@ The fulltext filenames typically are in one of these forms:
                 self._failure_reason = "N/A"
         except Exception as e:
             tr_path = None
-            self.item_warn("unhandled exception", e=e)
+            self.item_warn("unhandled exception", e=e, c=e.__class__.__name__)
+            self.logger.warning("detailed traceback:", exc_info=sys.exc_info())
             outcome = "fail"
             exception = True
             self._failure_reason = "unhandled-exception"
@@ -339,7 +423,7 @@ The fulltext filenames typically are in one of these forms:
         tr_path = self.config.target_refs_base / f"{item_stem}.raw"
 
         if not tr_path.exists():
-            self.item_trace1("creating output target-ref file", tr_path=tr_path)
+            self.item_trace1("need to create output target-ref file", tr_path=tr_path)
         elif tr_path.stat().st_mtime < ft_path.stat().st_mtime:
             self.item_trace1("output target-ref file needs updating", tr_path=tr_path)
         elif self.force:
@@ -359,27 +443,89 @@ The fulltext filenames typically are in one of these forms:
         wrote_refs = False
 
         if not is_pdf:
+            if self.debug_source_files_dir is None:
+                workdir = None
+            else:
+                import shutil
+
+                workdir = self.debug_source_files_dir / item_stem.replace("/", "_")
+                shutil.rmtree(workdir, ignore_errors=True)
+                workdir.mkdir()
+                self.item_trace1("preserving source files", p=workdir)
+
             try:
                 from . import tex
 
-                wrote_refs = tex.extract_references(self, ft_path, tr_path, bibcode)
+                outcome = tex.extract_references(
+                    self, ft_path, tr_path, bibcode, workdir=workdir
+                )
+
+                if isinstance(outcome, int):
+                    if outcome < 0:
+                        self.item_info("TeX-based extraction failed")
+                    else:
+                        wrote_refs = True
+                elif isinstance(outcome, str):
+                    if outcome == "withdrawn":
+                        # This is sort of a failure, but not one we can do
+                        # anything about.
+                        return "withdrawn"
+                    else:
+                        raise Exception(f"unexpected outcome string `{outcome}`")
+                else:
+                    raise NotImplementedError()
             except Exception as e:
                 self.item_warn("TeX extraction raised", e=e, c=e.__class__.__name__)
                 self.logger.warning("detailed traceback:", exc_info=sys.exc_info())
 
         if not wrote_refs:
-            #  This is where we should do stuff with PDFs!
-            self.item_warn(
-                "TEMP bailing because we can only TeX and that didn't work",
+            # For now (?), farm out to the classic Perl implementation to try to
+            # extract refs from the PDF.
+            self.item_info(
+                "attempting Perl-based PDF reference extraction",
                 is_pdf=is_pdf,
             )
-            self.item_give_up("pdf-unimplemented")
-            return None
+
+            if is_pdf:
+                pdf_path = ft_path
+            else:
+                pdf_path = self.config.fulltext_base / f"{item_stem}.pdf"
+
+            if not pdf_path.exists():
+                self.item_warn("cannot find expected PDF", pdf_path=pdf_path)
+                self.item_give_up("missing-pdf")
+                return None
+
+            tr_path.parent.mkdir(parents=True, exist_ok=True)
+            argv = [str(self.pdf_helper), str(pdf_path), str(tr_path), bibcode]
+            self.item_trace1("invoking Perl extractor", argv=argv)
+
+            try:
+                subprocess.run(
+                    argv,
+                    shell=False,
+                    stdin=subprocess.DEVNULL,
+                    stdout=sys.stderr.buffer,
+                    stderr=subprocess.STDOUT,
+                    check=True,
+                )
+            except subprocess.CalledProcessError as e:
+                self.item_warn("PDF extraction failed", argv=argv, e=e)
+            except Exception as e:
+                self.item_warn(
+                    "unexpected failure when trying PDF extraction", argv=argv, e=e
+                )
+
+            if tr_path.exists():
+                self.item_info("Perl-based extraction seems to have worked")
+            else:
+                self.item_info("Perl-based extraction didn't create its output")
+                return None
 
         return tr_path
 
 
-def entrypoint(argv=sys.argv, stream=sys.stdin):
+def entrypoint(argv=sys.argv, stream=None):
     sys.exit(CompatExtractor.new_from_commandline(argv).process(stream))
 
 

@@ -1,0 +1,22 @@
+# This file should be source-able as shell script without any quotation
+# marks, etc.
+
+# The absolute path to the ArXiv fulltext sources (or a subset thereof).
+# Paths such as `$fulltext_dir/arXiv/2111/00061.tar.gz` should exist.
+fulltext_dir=/your/fulltext/lives/here
+
+# The absolute path where reprocessing results should end up. You should
+# create this directory. For most use cases you should set it up with
+# a "tag" subdirectory named `prod` as described in the README. A
+# reprocessing run generally creates about 10 MB of output, so this
+# doesn't necessarily need to live on a massive disk or anything.
+results_dir=/your/results/live/here
+
+# The name of the extractor Docker image. In most cases this default
+# will be what you want.
+extractor_image=tailor/backoffice-arxiv-reference-extractor:latest
+
+# The absolute path to a database file that will be created and filled
+# with reference resolver results. This could go inside your
+# `$results_dir`.
+resolver_cache_db_path=/path/to/your/resolver_cache.db

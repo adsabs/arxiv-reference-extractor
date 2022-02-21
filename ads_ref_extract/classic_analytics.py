@@ -330,15 +330,34 @@ def compare_outcomes(
         (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger)
     )
 
+    # Set up to deal with withdrawals. They're not failures, but they can't
+    # produce references.
+
+    er1 = A_config.classic_session_log_path(session_id) / "extractrefs.stderr"
+    er2 = B_config.classic_session_log_path(session_id) / "extractrefs.stderr"
+
+    for log in (er1, er2):
+        if not log.exists():
+            continue
+
+        with log.open("rt") as f:
+            for line in f:
+                if "% withdrawn" not in line:
+                    continue
+
+                item = line.split("@i")[1].split()[0]
+                A_results[item] = ("tex.gz", "withdrawn")
+                B_results[item] = ("tex.gz", "withdrawn")
+
     # Do the high-level comparison
 
     stems = set(A_results.keys())
     stems.update(B_results.keys())
 
+    failures = set()
     regressions = set()
     fixes = set()
     n_preserves = 0
-    n_fails = 0
     n_ignored_pdfs = 0
 
     for stem in stems:
@@ -351,7 +370,7 @@ def compare_outcomes(
 
         if A_path is None:
             if B_path is None:
-                n_fails += 1
+                failures.add(stem)
             else:
                 fixes.add(stem)
         elif B_path is None:
@@ -360,6 +379,12 @@ def compare_outcomes(
             n_preserves += 1
 
     # Emit
+
+    if failures:
+        yield "Failed in both runs:\n"
+        for stem in sorted(failures):
+            yield f"    {stem}\n"
+        yield "\n"
 
     if fixes:
         yield "Fixed:\n"
@@ -376,7 +401,7 @@ def compare_outcomes(
     yield f">>> {len(fixes)} fixed items\n"
     yield f">>> {len(regressions)} regressed items\n"
     yield f">>> {n_preserves} preserved successes\n"
-    yield f">>> {n_fails} unfixed failures\n"
+    yield f">>> {len(failures)} unfixed failures\n"
 
     if ignore_pdfonly:
         yield f">>> {n_ignored_pdfs} ignored PDF-only items\n"
@@ -509,9 +534,6 @@ class ClassicSessionReprocessor(object):
     custom_app_dir = None
     "A local directory with a custom copy of the app to be mounted into the container."
 
-    impl_kind = "python"
-    "Which extractor implementation to use."
-
     capture_stderr = False
     "Whether stderr output should be saved to `extractrefs.stderr`"
 
@@ -556,10 +578,6 @@ class ClassicSessionReprocessor(object):
             "--name",
             f"arxiv_refextract_repro_{session_id}",
             "-v",
-            f"{self.config.abstracts_config_base}:/proj/ads/abstracts/config:ro,Z",
-            "-v",
-            f"{self.config.abstracts_links_base}:/proj/ads/abstracts/links:ro,Z",
-            "-v",
             f"{self.config.fulltext_base}:/virtual_abstracts/sources/ArXiv/fulltext:ro,Z",
             "-v",
             f"{self.config.target_refs_base}:/refs_out:rw,Z",
@@ -574,7 +592,7 @@ class ClassicSessionReprocessor(object):
             "-e",
             "ADS_REFERENCES",
             self.image_name,
-            f"--impl-{self.impl_kind}",
+            "/app/run.py",
             "--pbase",
             "/virtual_abstracts/sources/ArXiv/fulltext",
             "--tbase",
@@ -597,13 +615,21 @@ class ClassicSessionReprocessor(object):
             print(f"inner stderr captured to `{stderr_path}`", file=sys.stderr)
 
         # Setup: input processing specification. Copy the source file to the output
-        # directory to make it simple to do analytics on later.
+        # directory to make it simple to do analytics on later. While we're at it,
+        # we can figure out how many items there are to process.
 
         source_input_path = (
             self.config.classic_session_log_path(session_id) / "fulltextharvest.out"
         )
         input_path = logs_out_dir / "fulltextharvest.out"
-        shutil.copyfile(source_input_path, input_path)
+        n_to_do = 0
+
+        with open(source_input_path, "rt") as f_in, open(input_path, "wt") as f_out:
+            for line in f_in:
+                n_to_do += 1
+                print(line, end="", file=f_out)
+
+        print(f"number of items to process: {n_to_do}", file=sys.stderr)
 
         # Setup: inner environment. (This is mostly paranoia to avoid writing to
         # the production filesystem.)
