@@ -54,17 +54,17 @@ an older resolver service, and we want an apples-to-apples comparison.
 
 The utilities are as follows:
 
-### ./unpack.sh <ITEM>
+### ./unpack.sh {ITEM}
 
 Given an ArXiv item ID (e.g. "arXiv/1904/09850"), unpack its fulltext source
 into a temporary directory, printing the directory's name.
 
-### ./oneoff.sh <ITEM>
+### ./oneoff.sh {ITEM}
 
 Do a one-off extraction of the specified ArXiv item, placing results under the
 tag "oneoffs".
 
-### ./repro.py <TAG> <SESSION>
+### ./repro.py {TAG} {SESSION}
 
 Reprocess the given ArXiv session (e.g. "2021-11-07"), placing logfiles and
 reference files into the results directory under the specified tag. A results
@@ -75,31 +75,31 @@ bibcodes).
 On @pkgw's laptop, reprocessing averages about 2 seconds per item, which means
 that reprocessing usually takes about 45 minutes for a typical session.
 
-### ./summarize.py <TAG> <SESSION>
+### ./summarize.py {TAG} {SESSION}
 
 Print some summary statistics about the outcomes of the specified processing
 session, based on the results with the specified tag.
 
-### ./logs.sh <TAG> <SESSION> <ITEM>
+### ./logs.sh {TAG} {SESSION} {ITEM}
 
 Print out the primary processing logs associated with the given item as
 processed in the specific session+tag. This only works for sessions processed
 using the new Python-based framework.
 
-### ./cmp-outcomes.py <TAG-A> <TAG-B> <SESSION>
+### ./cmp-outcomes.py {TAG-A} {TAG-B} {SESSION}
 
 Print a comparison of the item-level outcomes for two different processing runs
 of the same session. This doesn't compare the reference strings that were
 extracted but does compare how many items were successfully processed, if any
 regressed in B relative to A, etc.
 
-### ./cmp-refstrings.py <TAG-A> <TAG-B> <SESSION>
+### ./cmp-refstrings.py {TAG-A} {TAG-B} {SESSION}
 
 Print a comparison of the reference strings extracted from two different
 processing runs of the same session. This uses a "diff"-like output for each
 item which will usually be voluminous.
 
-### ./cmp-resolved.py <TAG-A> <TAG-B> <SESSION>
+### ./cmp-resolved.py {TAG-A} {TAG-B} {SESSION}
 
 Compare the resolved references extracted from two different processing runs of
 the same session. This relies on API calls to the ADS reference resolver
@@ -114,8 +114,11 @@ Arxiv processing session can take *hours* if most of the references aren't
 cached. While transient network errors can also kill the analysis program, if
 you rerun it, it will resume where it left off, thanks to the local cache.
 
-### ./run-it.sh <DRIVER-ARGS...>
+### ./run-it.sh {DRIVER-ARGS...}
 
 A helper script that runs the extraction pipeline inside a Docker container. The
 parent of the directory containing this script is mounted as `/app` in the
-container, meaning that local modifications *will* take effect.
+container, meaning that local modifications *will* take effect. This is only
+invoked by `oneoff.sh`. The `repro.py` script uses the
+`ClassicSessionReprocessor` framework found in
+`ads_ref_extract.classic_analytics`.

@@ -534,11 +534,11 @@ class ClassicSessionReprocessor(object):
     custom_app_dir = None
     "A local directory with a custom copy of the app to be mounted into the container."
 
-    capture_stderr = False
-    "Whether stderr output should be saved to `extractrefs.stderr`"
-
     debug = False
     "Whether the extractor should be run in debugging mode"
+
+    force = False
+    "Whether the extractor should be run in --force mode"
 
     def __init__(self, config=None, image_name=None, logs_out_base=None):
         if config is not None:
@@ -566,57 +566,26 @@ class ClassicSessionReprocessor(object):
         """
         Reprocess the specified session by invoking a Dockerized reference
         extractor.
+
+        We try to drive this in a way that mirrors the ADS backoffice Docker
+        setup as closely as possible. Namely:
+
+        - invoked as /app/run.py --pipeline $inputfile
+        - ADS_ARXIVREFS_LOGROOT=/app/logs
+        - ADS_ARXIVREFS_REFOUT=/app/results/testing/references/sources
+
+        ... with the big caveat that state directories can't go into /app for us
+        when the ``custom_app_dir`` is activated.
         """
 
         self._validate()
 
-        argv = [
-            "docker",
-            "run",
-            "--rm",
-            "-i",
-            "--name",
-            f"arxiv_refextract_repro_{session_id}",
-            "-v",
-            f"{self.config.fulltext_base}:/virtual_abstracts/sources/ArXiv/fulltext:ro,Z",
-            "-v",
-            f"{self.config.target_refs_base}:/refs_out:rw,Z",
-        ]
-
-        if self.custom_app_dir is not None:
-            argv += ["-v", f"{self.custom_app_dir}:/app:ro,Z"]
-
-        argv += [
-            "-e",
-            "ADS_ABSTRACTS",
-            "-e",
-            "ADS_REFERENCES",
-            self.image_name,
-            "/app/run.py",
-            "--pbase",
-            "/virtual_abstracts/sources/ArXiv/fulltext",
-            "--tbase",
-            "/refs_out",
-            "--force",
-        ]
-
-        if self.debug:
-            argv += ["--debug"]
-
-        # Setup: output log file
-
-        year = session_id.split("-")[0]
-        logs_out_dir = self.logs_out_base / year / session_id
-        os.makedirs(logs_out_dir, exist_ok=True)
-        out_log_path = logs_out_dir / "extractrefs.out"
-        stderr_path = logs_out_dir / "extractrefs.stderr"
-
-        if self.capture_stderr:
-            print(f"inner stderr captured to `{stderr_path}`", file=sys.stderr)
-
         # Setup: input processing specification. Copy the source file to the output
         # directory to make it simple to do analytics on later. While we're at it,
         # we can figure out how many items there are to process.
+
+        logs_out_dir = self.logs_out_base / session_id
+        os.makedirs(logs_out_dir, exist_ok=True)
 
         source_input_path = (
             self.config.classic_session_log_path(session_id) / "fulltextharvest.out"
@@ -631,31 +600,49 @@ class ClassicSessionReprocessor(object):
 
         print(f"number of items to process: {n_to_do}", file=sys.stderr)
 
-        # Setup: inner environment. (This is mostly paranoia to avoid writing to
-        # the production filesystem.)
+        # Work on the Docker invocation
 
-        env = dict(os.environ)
-        env["ADS_ABSTRACTS"] = "/virtual_abstracts"
-        env["ADS_REFERENCES"] = "/virtual_references"
+        argv = [
+            "docker",
+            "run",
+            "--rm",
+            "--name",
+            f"arxiv_refextract_repro_{session_id}",
+            "-v",
+            f"{self.config.fulltext_base}:/proj/ads/abstracts/sources/ArXiv/fulltext:ro,Z",
+        ]
+
+        if self.custom_app_dir is None:
+            spfx = "app"
+        else:
+            # Can't mount inside the /app dir if /app is itself a mount
+            spfx = "_app"
+            argv += ["-v", f"{self.custom_app_dir}:/app:ro,Z"]
+
+        argv += [
+            "-v",
+            f"{self.config.target_refs_base}:/{spfx}/results/testing/references/sources:rw,Z",
+            "-v",
+            f"{self.logs_out_base}:/{spfx}/logs:rw,Z",
+            "-e",
+            f"ADS_ARXIVREFS_LOGROOT=/{spfx}/logs",
+            "-e",
+            f"ADS_ARXIVREFS_REFOUT=/{spfx}/results/testing/references/sources",
+            self.image_name,
+            "/app/run.py",
+            "--pipeline",
+            f"/{spfx}/logs/{session_id}/fulltextharvest.out",
+        ]
+
+        if self.debug:
+            argv += ["--debug"]
+
+        if self.force:
+            argv += ["--force"]
 
         # Ready to go!
 
-        with open(input_path, "rb") as f_in, open(out_log_path, "wb") as f_out:
-            if self.capture_stderr:
-                with open(stderr_path, "wb") as f_err:
-                    subprocess.check_call(
-                        argv,
-                        shell=False,
-                        close_fds=True,
-                        stdin=f_in,
-                        stdout=f_out,
-                        stderr=f_err,
-                        env=env,
-                    )
-            else:
-                subprocess.check_call(
-                    argv, shell=False, close_fds=True, stdin=f_in, stdout=f_out, env=env
-                )
+        subprocess.check_call(argv, shell=False, close_fds=True)
 
 
 def _maybe_load_raw_file(path, logger):

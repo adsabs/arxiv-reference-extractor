@@ -5,7 +5,7 @@ Compare the item-level extraction outcomes in two processing sessions. Usage:
 
     ./cmp-outcomes.py <tagA> <tagB> <sessionid>
 
-... where the <tags> are the name of two directory within /a/ads/results/
+... where the <tags> are the names of two directories within $results_dir
 and <sessionid> is the Arxiv update session name (e.g. 2021-11-07).
 """
 
