@@ -40,8 +40,8 @@ cfg.target_refs_base = Path(
 )
 repro.image_name = diagnostics_cfg["extractor_image"]
 repro.custom_app_dir = app_dir
-repro.capture_stderr = True
 repro.debug = True
+repro.force = True
 
 # These are the logs that we scan in order to figure out what to process:
 cfg.logs_base = Path(f"{diagnostics_cfg['results_dir']}/prod/logs")
