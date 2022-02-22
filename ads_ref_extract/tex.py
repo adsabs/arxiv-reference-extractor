@@ -256,14 +256,14 @@ def _split_on_delimited_prefix(text: str, open: str, close: str) -> Tuple[str, s
 _FIND_REF_REGEX = re.compile(r"<r>(.*?)<\s*/r\s*>", re.MULTILINE | re.DOTALL)
 
 
-def _extract_references(text_path: Path, dump_text=False) -> List[str]:
+def _extract_references(text_path: Path, dump_stream=None) -> List[str]:
     with text_path.open("rt", encoding="utf8") as f:
         text = f.read()
 
-    if dump_text:
-        print(f"====== text extracted to {text_path} ======", file=sys.stderr)
-        print(text, file=sys.stderr)
-        print("====== end ======", file=sys.stderr)
+    if dump_stream is not None:
+        print(f"====== text extracted to {text_path} ======", file=dump_stream)
+        print(text, file=dump_stream)
+        print("====== end ======", file=dump_stream)
 
     refs = []
 
@@ -510,7 +510,7 @@ class TexSourceItem(object):
         ]
 
         if session.debug_tex:
-            tex_stdout = sys.stderr.buffer
+            tex_stdout = session.log_stream.buffer
             tex_stderr = subprocess.STDOUT
         else:
             tex_stdout = subprocess.DEVNULL
@@ -587,8 +587,13 @@ class TexSourceItem(object):
         subprocess.check_call(
             ["pdftotext", "-raw", "-enc", "UTF-8", str(pdf_path), str(text_path)],
             shell=False,
+            stdin=subprocess.DEVNULL,
+            stdout=tex_stdout,
+            stderr=tex_stderr,
         )
-        return _extract_references(text_path, dump_text=dump_text)
+        return _extract_references(
+            text_path, dump_stream=session.log_stream if dump_text else None
+        )
 
 
 _BASENAME_SCORE_DELTAS = {

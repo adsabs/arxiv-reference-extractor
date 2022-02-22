@@ -32,6 +32,7 @@ the FULLTEXT-PATH was absolutified, and sometimes not.
 
 import argparse
 import logging
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -54,7 +55,11 @@ class CompatExtractor(object):
     logger: logging.Logger = None
     "A logger"
 
-    input_stream: TextIO = (None,)
+    input_stream: TextIO = None
+
+    output_stream: TextIO = None
+
+    log_stream: TextIO = None
 
     force = False
     "Recreate target reference file even if it exists and is more recent than source."
@@ -82,9 +87,7 @@ class CompatExtractor(object):
     @classmethod
     def new_from_commandline(cls, argv=sys.argv):
         parser = argparse.ArgumentParser(
-            # Need to manually add help so that we can use `-h` ourselves!
-            add_help=False,
-            epilog="""The program reads from stdin a table consisting of the
+            epilog="""(Original extractrefs.pl summary:) The program reads a table consisting of the
 fulltext e-print file (first column) and optionally its corresponding bibcode
 (second column), accno number (third column), and submission date (fourth
 column). If a bibcode is not given, one is obtained from bib2accno.list
@@ -96,13 +99,9 @@ The fulltext filenames typically are in one of these forms:
 """,
         )
         parser.add_argument(
-            "--help", action="help", help="show this help message and exit"
-        )
-        parser.add_argument(
-            "--harvest-list",
-            "-h",
+            "--pipeline",
             metavar="PATH",
-            help="Get items to process from the named file, rather than stdin",
+            help="Operate in pipeline mode, reading items from the specified path",
         )
         parser.add_argument(
             "--pbase",
@@ -170,10 +169,45 @@ The fulltext filenames typically are in one of these forms:
 
         settings = parser.parse_args(argv[1:])
 
-        # Set up logging ASAP. We need to configure to always go to stderr,
-        # since our stdout is parsed.
+        # We want logging ASAP but before we can do that, we need to check
+        # pipeline mode, since that might affect where the logging output should
+        # go.
 
-        handler = logging.StreamHandler(sys.stderr)
+        if settings.pipeline is None:
+            # All logs need to go to stderr, since in non-pipeline mode our
+            # stdout may be parsed.
+
+            session_id = None
+            input_stream = sys.stdin
+            log_stream = sys.stderr
+        else:
+            # Session ID is determined from name of the directory containing the
+            # input file.
+
+            input_path = Path(settings.pipeline)
+            session_id = input_path.parent.name
+            input_stream = input_path.open("rt")
+
+            # Set up directories
+
+            log_root_path = os.environ.get("ADS_ARXIVREFS_LOGROOT")
+            if log_root_path is None:
+                print(
+                    "fatal error: in --pipeline mode, $ADS_ARXIVREFS_LOGROOT must be set"
+                )
+                sys.exit(1)
+
+            log_path = Path(log_root_path) / session_id
+            print(
+                f"ads_ref_extract: launching in pipeline mode, session id {session_id}"
+            )
+            print(f"ads_ref_extract: logs to `{log_path / 'extractrefs.stderr'}`")
+            log_path.mkdir(parents=True, exist_ok=True)
+            log_stream = (log_path / "extractrefs.stderr").open("wt")
+
+        # OK, now we can set up the logging framework:
+
+        handler = logging.StreamHandler(log_stream)
         handler.setFormatter(
             logging.Formatter(
                 "%(asctime)s %(levelname)s\t%(message)s",
@@ -208,7 +242,7 @@ The fulltext filenames typically are in one of these forms:
         ):  # this is `--texbase`; our semantics are different
             config.tex_bin_dir = Path(settings.texbindir)
 
-        # Now the rest.
+        # Now common options.
 
         inst = cls()
         inst.config = config
@@ -220,28 +254,36 @@ The fulltext filenames typically are in one of these forms:
         inst.debug_tex = settings.debug_tex
         inst.debug_source_files_dir = settings.debug_sourcefiles
         inst.debug_pdftotext = settings.debug_pdftotext
-
-        if settings.harvest_list is not None:
-            inst.input_stream = open(settings.harvest_list)
-        else:
-            inst.input_stream = sys.stdin
+        inst.input_stream = input_stream
+        inst.log_stream = log_stream
 
         # Not currently configurable, but it could be.
         inst.pdf_helper = (
             Path(__file__).parent.parent / "classic" / "extract_one_pdf.pl"
         )
+
+        # Pipeline configurables:
+
+        if session_id is None:
+            inst.output_stream = sys.stdout
+        else:
+            inst.output_stream = (log_path / "extractrefs.out").open("wt")
+
         return inst
 
-    def process(self, stream=None):
+    def process(self, input_stream=None, output_stream=None):
         self.logger.info("using the new Python extractrefs")
         t0 = time.time()
         n_inputs = 0
         n_failures = 0
 
-        if stream is None:
-            stream = self.input_stream
+        if input_stream is None:
+            input_stream = self.input_stream
 
-        for line in stream:
+        if output_stream is None:
+            output_stream = self.output_stream
+
+        for line in input_stream:
             pieces = line.strip().split()
             if not pieces:
                 self.logger.debug("ignoring blank input line")
@@ -262,12 +304,12 @@ The fulltext filenames typically are in one of these forms:
 
             if target_ref_path == "withdrawn":
                 # No refs to extract, but not a failure either:
-                print(preprint_path)
+                print(preprint_path, file=output_stream)
             elif target_ref_path is None:
-                print(preprint_path)
+                print(preprint_path, file=output_stream)
                 n_failures += 1
             else:
-                print(preprint_path, target_ref_path)
+                print(preprint_path, target_ref_path, file=output_stream)
 
         elapsed = time.time() - t0
 
@@ -505,7 +547,7 @@ The fulltext filenames typically are in one of these forms:
                     argv,
                     shell=False,
                     stdin=subprocess.DEVNULL,
-                    stdout=sys.stderr.buffer,
+                    stdout=self.log_stream.buffer,
                     stderr=subprocess.STDOUT,
                     check=True,
                 )
@@ -525,8 +567,8 @@ The fulltext filenames typically are in one of these forms:
         return tr_path
 
 
-def entrypoint(argv=sys.argv, stream=None):
-    sys.exit(CompatExtractor.new_from_commandline(argv).process(stream))
+def entrypoint(argv=sys.argv):
+    sys.exit(CompatExtractor.new_from_commandline(argv).process())
 
 
 if __name__ == "__main__":
