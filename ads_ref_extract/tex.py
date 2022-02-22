@@ -98,16 +98,16 @@ def _extract_inner(
 
     if input_base.endswith(".tar.gz") or input_base.endswith(".tgz"):
         # Unpack straight from the fulltext
-        subprocess.check_call(["tar", "xzf", str(ft_path)], shell=False)
+        session.item_exec(["tar", "xzf", ft_path])
     elif input_base.endswith(".tar"):
         # Ditto
-        subprocess.check_call(["tar", "xf", str(ft_path)], shell=False)
+        session.item_exec(["tar", "xf", ft_path])
     elif input_base.endswith(".gz"):
         # Assume that other .gz files are directly compressed TeX. Ideally we wouldn't
         # rely on the shell to do the redirection here.
         session.item_trace2("guessing that fulltext is compressed TeX")
         outfn = input_base.replace(".gz", "")
-        subprocess.check_call(f"zcat {ft_path} >{outfn}", shell=True)
+        session.item_exec(["bash", "-c", f"zcat {ft_path} >{outfn}"])
     elif input_base.endswith(".tex"):
         # Just TeX
         shutil.copy(ft_path, input_base)
@@ -509,22 +509,11 @@ class TexSourceItem(object):
             str(self.path),
         ]
 
-        if session.debug_tex:
-            tex_stdout = session.log_stream.buffer
-            tex_stderr = subprocess.STDOUT
-        else:
-            tex_stdout = subprocess.DEVNULL
-            tex_stderr = subprocess.DEVNULL
-
         try:
-            subprocess.run(
+            session.item_exec(
                 command,
-                shell=False,
-                stdin=subprocess.DEVNULL,
-                stdout=tex_stdout,
-                stderr=tex_stderr,
+                silent=not session.debug_tex,
                 timeout=100,
-                check=True,
             )
         except subprocess.TimeoutExpired:
             session.item_trace1("TeX timed out")
@@ -584,13 +573,7 @@ class TexSourceItem(object):
         session.item_info(
             "got a munged-TeX PDF", pmain=self.path, ppdf=pdf_path, ptext=text_path
         )
-        subprocess.check_call(
-            ["pdftotext", "-raw", "-enc", "UTF-8", str(pdf_path), str(text_path)],
-            shell=False,
-            stdin=subprocess.DEVNULL,
-            stdout=tex_stdout,
-            stderr=tex_stderr,
-        )
+        session.item_exec(["pdftotext", "-raw", "-enc", "UTF-8", pdf_path, text_path])
         return _extract_references(
             text_path, dump_stream=session.log_stream if dump_text else None
         )

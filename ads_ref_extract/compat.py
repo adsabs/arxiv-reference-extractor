@@ -37,7 +37,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
-from typing import Optional, TextIO
+from typing import List, Optional, TextIO, Union
 
 from .config import Config
 from .utils import split_item_path
@@ -398,6 +398,33 @@ The fulltext filenames typically are in one of these forms:
             logging.DEBUG - 1, f"% {summary} @t2 {self._current_item} {details}"
         )
 
+    def item_exec(self, argv: List[Union[str, Path]], silent=False, timeout=None):
+        """
+        Execute a subprocess on behalf of an item processing step.
+
+        The main purpose of this wrapper is to make sure that the subprocess's
+        standard streams are redirected appropriately.
+        """
+        argv = [str(x) for x in argv]
+
+        if silent:
+            stdout = subprocess.DEVNULL
+            stderr = subprocess.DEVNULL
+        else:
+            stdout = self.log_stream.buffer
+            stderr = subprocess.STDOUT
+
+        self.item_trace2("executing subprocess", argv=argv)
+        subprocess.run(
+            argv,
+            shell=False,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout,
+            stderr=stderr,
+            check=True,
+            timeout=timeout,
+        )
+
     def process_one(self, preprint_path: str, bibcode: Optional[str]) -> Optional[str]:
         """
         Process a single preprint.
@@ -540,17 +567,9 @@ The fulltext filenames typically are in one of these forms:
 
             tr_path.parent.mkdir(parents=True, exist_ok=True)
             argv = [str(self.pdf_helper), str(pdf_path), str(tr_path), bibcode]
-            self.item_trace1("invoking Perl extractor", argv=argv)
 
             try:
-                subprocess.run(
-                    argv,
-                    shell=False,
-                    stdin=subprocess.DEVNULL,
-                    stdout=self.log_stream.buffer,
-                    stderr=subprocess.STDOUT,
-                    check=True,
-                )
+                self.item_exec(argv)
             except subprocess.CalledProcessError as e:
                 self.item_warn("PDF extraction failed", argv=argv, e=e)
             except Exception as e:
