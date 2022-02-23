@@ -403,8 +403,12 @@ class TexSourceItem(object):
                     # - When it's \%
                     # - Inside a \href where it's acting as percent-encoding
                     # - Surely other cases to be added, as well
+                    #
+                    # We detect the \href case by looking for % followed by
+                    # hexadecimal characters, not at the beginning of a line
                     if (
-                        len(line) > cidx + 2
+                        cidx > 0
+                        and len(line) > cidx + 2
                         and line[cidx + 1] in _HEX_CHARS
                         and line[cidx + 2] in _HEX_CHARS
                     ):
