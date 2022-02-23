@@ -171,6 +171,19 @@ class ResolverCache(object):
         self._handle[refstring.encode("utf-8")] = packed.encode("utf-8")
         return ResolvedRef(bibcode, score)
 
+    def count_need_rpc(self, refstrings):
+        """
+        Count the number of refstrings that would need an RPC call to resolve; i.e.,
+        the number that aren't locally cached.
+        """
+        n = 0
+
+        for rs in refstrings:
+            if self._get(rs) is None:
+                n += 1
+
+        return n
+
     def resolve(self, refstrings, logger=default_logger, api_token=None, no_rpc=False):
         """
         Resolve a batch of reference strings.

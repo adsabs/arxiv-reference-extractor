@@ -104,14 +104,18 @@ item which will usually be voluminous.
 Compare the extracted refstrings of two processings of an individual item. This
 uses a colorized, word-level diff display.
 
-### ./cmp-resolved.py {TAG-A} {TAG-B} {SESSION}
+### ./cmp-resolved.py [-m {MAX-RESOLVES}] {TAG-A} {TAG-B} {SESSION}
 
 Compare the resolved references extracted from two different processing runs of
 the same session. This relies on API calls to the ADS reference resolver
 service, which (1) are not very fast and (2) are rate-limited. Therefore we use
 a local "reference resolver cache" which caches resolution results for input
 refstrings. This doesn't speed up initial processing, but dramatically improves
-results when only small changes are made.
+results when only small changes are made. The `-m` option limits the number of
+analyzed items to keep the number of API calls below the specified threshold.
+This is done using a quasi-random but repeatable sorting of the input items, so
+that successive invocations will analyze progressively larger subsets of the
+whole session.
 
 If any API calls need to be made (which is almost always true), you must set the
 environment variable `$ADS_DEV_KEY` to an API token. Resolution for a single

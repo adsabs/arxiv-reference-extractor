@@ -4,9 +4,11 @@ extraction session.
 """
 
 import difflib
+import hashlib
 import logging
 from pathlib import Path
 import subprocess
+from typing import Optional
 
 from .config import Config
 from .resolver_cache import ResolverCache
@@ -684,11 +686,18 @@ class ResolveComparison(object):
     n_gained = 0
 
 
+def md5(text: str) -> bytes:
+    s = hashlib.md5()
+    s.update(text.encode("utf8"))
+    return s.digest()
+
+
 def compare_resolved(
     session_id: str,
     A_config: Config,
     B_config: Config,
     rcache: ResolverCache,
+    max_resolves: Optional[int] = None,
     logger=default_logger,
     **kwargs,
 ):
@@ -722,37 +731,64 @@ def compare_resolved(
     stems = set(A_results.keys())
     stems.update(B_results.keys())
 
+    # We need a reproducible but random-ish sort of the stems if we're going to do
+    # a partial comparison.
+
+    stems = sorted(stems, key=md5)
+
     # Now figure out the diffs for each item and build up a list of reference
-    # strings to resolve. By only looking at changed items, w decrease the
+    # strings to resolve. By only looking at changed items, we may decrease the
     # number of resolutions we need to perform by a factor of ~4.
     #
     # We batch up all of the references to resolve in order to make optimal use
-    # of the resolver microservice API.
+    # of the resolver microservice API. We also have a mechanism to cap the
+    # number of reference resolutions to perform, so that we can do analytics
+    # without needing to resolve every single string first (which can take more
+    # than 12 hours).
 
     A_uniques = {}
     B_uniques = {}
     to_resolve = set()
     results = {}
+    n_resolves_needed = 0
 
-    for stem in stems:
-        A_ext, A_path = A_results.get(stem, (None, None))
-        B_ext, B_path = B_results.get(stem, (None, None))
+    def source():
+        for stem in stems:
+            A_ext, A_path = A_results.get(stem, (None, None))
+            B_ext, B_path = B_results.get(stem, (None, None))
 
-        A_refstrings = _maybe_load_raw_file(A_path, logger)
-        B_refstrings = _maybe_load_raw_file(B_path, logger)
+            A_refstrings = _maybe_load_raw_file(A_path, logger)
+            B_refstrings = _maybe_load_raw_file(B_path, logger)
 
-        A_uniques[stem] = A_refstrings - B_refstrings
-        B_uniques[stem] = B_refstrings - A_refstrings
-        to_resolve.update(B_refstrings ^ A_refstrings)
+            A_uniques[stem] = A_refstrings - B_refstrings
+            B_uniques[stem] = B_refstrings - A_refstrings
 
-        info = ResolveComparison()
-        info.stem = stem
-        info.A_ext = A_ext
-        info.B_ext = B_ext
-        info.n_strings_A = len(A_refstrings)
-        info.n_strings_B = len(B_refstrings)
+            info = ResolveComparison()
+            info.stem = stem
+            info.A_ext = A_ext
+            info.B_ext = B_ext
+            info.n_strings_A = len(A_refstrings)
+            info.n_strings_B = len(B_refstrings)
 
+            yield stem, info, B_refstrings ^ A_refstrings
+
+    for stem, info, this_to_resolve in source():
+        this_need_rpc = rcache.count_need_rpc(this_to_resolve)
+
+        if (
+            max_resolves is not None
+            and n_resolves_needed + this_need_rpc > max_resolves
+        ):
+            break
+
+        to_resolve.update(this_to_resolve)
         results[stem] = info
+        n_resolves_needed += this_need_rpc
+
+    if max_resolves is not None and len(results) < len(stems):
+        logger.warn(
+            f"stopping at {len(results)} items (out of {len(stems)}) to keep number of resolutions below {max_resolves}"
+        )
 
     # Resolve all the things!
 
@@ -760,7 +796,7 @@ def compare_resolved(
 
     # Postprocess analytics
 
-    for stem in stems:
+    for stem, info in results.items():
         info = results[stem]
         A_score = 0
         B_score = 0
