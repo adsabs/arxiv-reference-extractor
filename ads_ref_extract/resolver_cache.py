@@ -187,9 +187,6 @@ class ResolverCache(object):
         resolved = {}
         todo = set()
 
-        if api_token is None:
-            api_token = _get_default_api_token()
-
         for rs in refstrings:
             info = self._get(rs)
             if info is None:
@@ -197,12 +194,17 @@ class ResolverCache(object):
             else:
                 resolved[rs] = info
 
-        if no_rpc:
+        if not todo:
+            pass
+        elif no_rpc:
             logger.warn(f"NOT resolving {len(todo)} reference strings")
 
             for rs in todo:
                 resolved[rs] = ResolvedRef("xxxxxxxxxxxxxxxxxxx", 0.0)
         else:
+            if api_token is None:
+                api_token = _get_default_api_token()
+
             logger.warn(f"resolving {len(todo)} reference strings")
 
             for info in _resolve_references(todo, api_token, logger):
