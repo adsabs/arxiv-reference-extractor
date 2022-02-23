@@ -836,6 +836,8 @@ def _do_one(settings, until):
     session = CompatExtractor()
     session.config = Config.new_defaults()
     session.logger = _get_quick_logger()
+    session.log_stream = sys.stderr
+    session.output_stream = sys.stdout
 
     ft_path = Path(settings.fulltext).absolute()
 
