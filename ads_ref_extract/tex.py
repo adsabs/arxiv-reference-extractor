@@ -266,6 +266,10 @@ def _extract_references(text_path: Path, dump_stream=None) -> List[str]:
     with text_path.open("rt", encoding="utf8") as f:
         text = f.read()
 
+    # For now (?) the reference resolver doesn't handle Unicode quotation marks
+    # well, so strip them out here.
+    text = text.replace("”", '"').replace("“", '"')
+
     if dump_stream is not None:
         print(f"====== text extracted to {text_path} ======", file=dump_stream)
         print(text, file=dump_stream)
