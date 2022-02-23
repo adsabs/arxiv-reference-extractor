@@ -416,6 +416,7 @@ class TexSourceItem(object):
                     elif cidx == 0:
                         # Note: we need to remove all comments so that our </r>s
                         # make it into the output
+                        line_in_progress += " "
                         continue
                     elif line[cidx - 1] != "\\":
                         line_in_progress = line[:cidx] + " "
@@ -423,7 +424,7 @@ class TexSourceItem(object):
 
                 m = _FORCED_NEWLINE_REGEX.search(line[1:])
                 if m is not None:
-                    line_in_progress = line[m.start() + 1 :]
+                    line_in_progress = line[m.start() + 1 :] + " "
                     line = line[: m.start() + 1]
 
                 if _END_REFS_REGEX.search(line) is not None:
@@ -454,10 +455,10 @@ class TexSourceItem(object):
                         self.tag_ref(tag, cur_ref, ref_type, f_out)
                         n_tagged += 1
 
-                    cur_ref = m[2]
+                    cur_ref = m[2] + " "
                 elif tag is not None:
                     # In the middle of an item
-                    cur_ref += line
+                    cur_ref += line + " "
                 else:
                     # Still looking for the actual bib items
                     print(line, file=f_out)
