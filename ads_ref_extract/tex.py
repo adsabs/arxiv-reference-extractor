@@ -220,6 +220,12 @@ _FORCED_NEWLINE_REGEX = re.compile(r"\\bibitem|\\reference|\\end\{", re.IGNORECA
 _END_REFS_REGEX = re.compile(
     r"^\s*\\end\s*\{(chapthebibliography|thebibliography|references)\}", re.IGNORECASE
 )
+_EMPH_REGEXES = [
+    re.compile(r"\{\\em (.*?)\}"),
+    re.compile(r"\{\\it (.*?)\}"),
+    re.compile(r"\\emph\{(.*?)\}"),
+    re.compile(r"\\textit\{(.*?)\}"),
+]
 
 
 def _split_on_delimited_prefix(text: str, open: str, close: str) -> Tuple[str, str]:
@@ -412,8 +418,6 @@ class TexSourceItem(object):
                     line_in_progress = line[m.start() + 1 :]
                     line = line[: m.start() + 1]
 
-                # TODO: implement {\em ...} munging here.
-
                 if _END_REFS_REGEX.search(line) is not None:
                     if cur_ref:
                         # Need to emit this before emitting the \end{references} line:
@@ -483,6 +487,12 @@ class TexSourceItem(object):
         Otherwise we expect `\{tag} Ref text ...` (e.g., consistent with the
         second \reference option).
         """
+
+        # The munging applied here has a non-trivial impact on the success of
+        # the reference resolution stage:
+        for regex in _EMPH_REGEXES:
+            text = regex.sub(r'"\1"', text)
+
         if ref_type == "bibitem":
             left, text = _split_on_delimited_prefix(text, "[", "]")
             tag += left
