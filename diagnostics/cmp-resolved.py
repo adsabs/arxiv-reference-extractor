@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 """
 Compare the resolved references from two Arxiv processing sessions. Usage:
@@ -24,7 +24,7 @@ sys.path.append(app_dir)
 from ads_ref_extract import config, classic_analytics, resolver_cache
 
 if len(sys.argv) != 4:
-    print("usage: ./repro.py <tagA> <tagB> <session-id>")
+    print(f"usage: {sys.argv[0]} <tagA> <tagB> <session-id>")
     sys.exit(1)
 
 tagA = sys.argv[1]
