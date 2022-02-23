@@ -580,27 +580,16 @@ class ClassicSessionReprocessor(object):
 
         self._validate()
 
-        # Setup: input processing specification. Copy the source file to the output
-        # directory to make it simple to do analytics on later. While we're at it,
-        # we can figure out how many items there are to process.
-
-        logs_out_dir = self.logs_out_base / session_id
-        os.makedirs(logs_out_dir, exist_ok=True)
-
-        source_input_path = (
-            self.config.classic_session_log_path(session_id) / "fulltextharvest.out"
-        )
-        input_path = logs_out_dir / "fulltextharvest.out"
-        n_to_do = 0
-
-        with open(source_input_path, "rt") as f_in, open(input_path, "wt") as f_out:
-            for line in f_in:
-                n_to_do += 1
-                print(line, end="", file=f_out)
-
-        print(f"number of items to process: {n_to_do}", file=sys.stderr)
-
-        # Work on the Docker invocation
+        # The *input* log directory , which we use to know what items to
+        # process, is derived from `config.logs_base`. This is not the same
+        # thing as `self.logs_out_base`, where the pipeline log files should
+        # land. We have to get the session's correct log directory (which may be
+        # in a year-based subdirectory) and make sure to mount it into the
+        # container so that the pipeline can actually access it. The
+        # in-container filename has to be in a directory whose name is
+        # `session_id` since the pipeline code infers the session ID from that
+        # name.
+        log_dir = self.config.classic_session_log_path(session_id)
 
         argv = [
             "docker",
@@ -610,6 +599,8 @@ class ClassicSessionReprocessor(object):
             f"arxiv_refextract_repro_{session_id}",
             "-v",
             f"{self.config.fulltext_base}:/proj/ads/abstracts/sources/ArXiv/fulltext:ro,Z",
+            "-v",
+            f"{log_dir}:/input_logs/{session_id}:ro,Z",
         ]
 
         if self.custom_app_dir is None:
@@ -631,7 +622,7 @@ class ClassicSessionReprocessor(object):
             self.image_name,
             "/app/run.py",
             "--pipeline",
-            f"/{spfx}/logs/{session_id}/fulltextharvest.out",
+            f"/input_logs/{session_id}/fulltextharvest.out",
         ]
 
         if self.debug:

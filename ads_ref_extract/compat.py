@@ -199,7 +199,7 @@ The fulltext filenames typically are in one of these forms:
 
             log_path = Path(log_root_path) / session_id
             print(
-                f"ads_ref_extract: launching in pipeline mode, session id {session_id}"
+                f"ads_ref_extract: launching in pipeline mode, session id `{session_id}`"
             )
             print(
                 f"ads_ref_extract: logs to `{log_path / 'extractrefs.stderr'}`",
@@ -271,6 +271,23 @@ The fulltext filenames typically are in one of these forms:
             inst.output_stream = sys.stdout
         else:
             inst.output_stream = (log_path / "extractrefs.out").open("wt")
+
+        # In pipeline mode, now is the time to preserve the input specification,
+        # since the input filepath won't be available downstream. We use this
+        # file for post-processing analytics.
+
+        if session_id is not None:
+            input_clone_path = log_path / "fulltextharvest.out"
+            n_to_do = 0
+
+            with open(settings.pipeline, "rt") as f_in, open(
+                input_clone_path, "wt"
+            ) as f_out:
+                for line in f_in:
+                    n_to_do += 1
+                    print(line, end="", file=f_out)
+
+            print(f"ads_ref_extract: number of items to process: {n_to_do}", flush=True)
 
         return inst
 
