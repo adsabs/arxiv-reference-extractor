@@ -111,8 +111,9 @@ results when only small changes are made.
 If any API calls need to be made (which is almost always true), you must set the
 environment variable `$ADS_DEV_KEY` to an API token. Resolution for a single
 Arxiv processing session can take *hours* if most of the references aren't
-cached. While transient network errors can also kill the analysis program, if
-you rerun it, it will resume where it left off, thanks to the local cache.
+cached. (The microservice averages about 1.2 seconds per refstring.) While
+transient network errors can also kill the analysis program, if you rerun it, it
+will resume where it left off, thanks to the local cache.
 
 ### ./run-it.sh {DRIVER-ARGS...}
 
@@ -122,3 +123,13 @@ container, meaning that local modifications *will* take effect. This is only
 invoked by `oneoff.sh`. The `repro.py` script uses the
 `ClassicSessionReprocessor` framework found in
 `ads_ref_extract.classic_analytics`.
+
+### ./dump-resolutions.py {PATHS...}
+
+The input files are "target reference" files of the format found in
+`$results_dir/references/sources/`. This utility resolves the refstrings in
+those files and prints out their resolutions, which can be helpful for
+understanding if/how a particular refstring is resolving successfully or not.
+
+If any API calls need to be made, the environment variable `$ADS_DEV_KEY` must
+be set as above.
