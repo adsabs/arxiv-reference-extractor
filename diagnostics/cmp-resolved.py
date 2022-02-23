@@ -56,7 +56,9 @@ with resolver_cache.ResolverCache(db_path) as rcache:
         session_id, cfgA, cfgB, rcache, no_rpc=no_rpc
     )
 
-    for stem, info in cmp.items():
+    for stem, info in sorted(
+        cmp.items(), key=lambda kv: kv[1].score_delta, reverse=True
+    ):
         if info.score_delta != 0:
             print(info)
             for lrs in info.lost_resolutions:

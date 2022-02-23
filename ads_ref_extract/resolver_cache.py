@@ -1,6 +1,9 @@
 """
 A caching store for the ADS reference resolver microservice, which turns textual
 references ("refstrings") into resolved bibcodes.
+
+The typical throughput of the resolution service is about 1.2 resolutions per
+second, which is why caching is so valuable here.
 """
 
 from collections import namedtuple
@@ -9,6 +12,7 @@ import json
 import logging
 import os
 import requests
+import time
 
 __all__ = ["ResolvedRef", "ResolverCache"]
 
@@ -46,6 +50,8 @@ def _resolve_references(refstrings, api_token, logger):
     """
 
     BATCH_SIZE_LIMIT = 16
+    t0 = time.time()
+    tlast = t0
 
     def resolve_batch(references):
         """
@@ -82,18 +88,35 @@ def _resolve_references(refstrings, api_token, logger):
         raise Exception("unreachable")
 
     batch = []
+    n_resolved = 0
 
     for next_ref in refstrings:
         batch.append(next_ref)
 
         if len(batch) >= BATCH_SIZE_LIMIT:
             for info in resolve_batch(batch):
+                n_resolved += 1
                 yield info
             batch = []
 
+        tnow = time.time()
+        if tnow - tlast > 180:
+            tp = n_resolved / (tnow - t0)
+            logger.warn(
+                f"reference resolution status: {n_resolved} resolved, throughput {tp} resolutions/second"
+            )
+            tlast = tnow
+
     if len(batch):
         for info in resolve_batch(batch):
+            n_resolved += 1
             yield info
+
+    tnow = time.time()
+    tp = n_resolved / (tnow - t0)
+    logger.warn(
+        f"finished resolving: {n_resolved} resolved, throughput {tp} resolutions/second"
+    )
 
 
 class ResolverCache(object):

@@ -697,7 +697,7 @@ class ResolveComparison(object):
     def __str__(self):
         return f"""Resolve comparison {self.stem}:
     exts = {self.A_ext}, {self.B_ext}
-    score_delta = {self.score_delta}
+    score_delta = {self.score_delta:.1f}
     #lost = {len(self.lost_resolutions)}"""
 
 
