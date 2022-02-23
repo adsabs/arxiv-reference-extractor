@@ -56,18 +56,25 @@ with resolver_cache.ResolverCache(db_path) as rcache:
         session_id, cfgA, cfgB, rcache, no_rpc=no_rpc
     )
 
+    print(
+        "{:20}  {:12}  {:>4}  {:>8}  {:>6}  {:>6}  {:>6}".format(
+            "ITEM", "EXT-A/B", "NR_A", "NR_(B-A)", "NLOST", "NGAIN", "DSCORE"
+        )
+    )
+
     for stem, info in sorted(
         cmp.items(), key=lambda kv: kv[1].score_delta, reverse=True
     ):
-        if info.score_delta != 0:
-            print(info)
-            for lrs in info.lost_resolutions:
-                print("       ", lrs)
+        ext = f"{info.A_ext}/{info.B_ext}"
+        print(
+            f"{stem:20}  {ext:12}  {info.n_strings_A:4d}  {info.n_strings_B - info.n_strings_A:+8d}  {info.n_lost:6d}  {info.n_gained:6d}  {info.score_delta:+6.1f}"
+        )
 
+    print()
     tot = 0
 
     for info in cmp.values():
         tot += info.score_delta
 
     print("N comparisons:", len(cmp))
-    print("Total delta:", tot)
+    print(f"Total delta: {tot:+.1f}")

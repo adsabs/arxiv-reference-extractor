@@ -5,12 +5,11 @@ extraction session.
 
 import difflib
 import logging
-import os
 from pathlib import Path
-import shutil
 import subprocess
-import sys
 
+from .config import Config
+from .resolver_cache import ResolverCache
 from .utils import split_item_path
 
 __all__ = [
@@ -580,15 +579,14 @@ class ClassicSessionReprocessor(object):
 
         self._validate()
 
-        # The *input* log directory , which we use to know what items to
-        # process, is derived from `config.logs_base`. This is not the same
-        # thing as `self.logs_out_base`, where the pipeline log files should
-        # land. We have to get the session's correct log directory (which may be
-        # in a year-based subdirectory) and make sure to mount it into the
-        # container so that the pipeline can actually access it. The
-        # in-container filename has to be in a directory whose name is
-        # `session_id` since the pipeline code infers the session ID from that
-        # name.
+        # The *input* log directory, which we use to know what items to process,
+        # is derived from `config.logs_base`. This is not the same thing as
+        # `self.logs_out_base`, where the pipeline log files should land. We
+        # have to get the session's correct log directory (which may be in a
+        # year-based subdirectory) and make sure to mount it into the container
+        # so that the pipeline can actually access it. The in-container filename
+        # has to be in a directory whose name is `session_id` since the pipeline
+        # code infers the session ID from that name.
         log_dir = self.config.classic_session_log_path(session_id)
 
         argv = [
@@ -679,21 +677,20 @@ class ResolveComparison(object):
     stem = None
     A_ext = None
     B_ext = None
+    n_strings_A = 0
+    n_strings_B = 0
     score_delta = None
-    lost_resolutions = None
-
-    def __init__(self):
-        self.lost_resolutions = set()
-
-    def __str__(self):
-        return f"""Resolve comparison {self.stem}:
-    exts = {self.A_ext}, {self.B_ext}
-    score_delta = {self.score_delta:.1f}
-    #lost = {len(self.lost_resolutions)}"""
+    n_lost = 0
+    n_gained = 0
 
 
 def compare_resolved(
-    session_id, A_config, B_config, rcache, logger=default_logger, **kwargs
+    session_id: str,
+    A_config: Config,
+    B_config: Config,
+    rcache: ResolverCache,
+    logger=default_logger,
+    **kwargs,
 ):
     """
     Compare the results of reference extraction and resolution for two different
@@ -752,6 +749,8 @@ def compare_resolved(
         info.stem = stem
         info.A_ext = A_ext
         info.B_ext = B_ext
+        info.n_strings_A = len(A_refstrings)
+        info.n_strings_B = len(B_refstrings)
 
         results[stem] = info
 
@@ -765,7 +764,15 @@ def compare_resolved(
         info = results[stem]
         A_score = 0
         B_score = 0
+        A_bibcodes = set()
         B_bibcodes = set()
+
+        for rs in A_uniques[stem]:
+            ri = resolved[rs]
+            A_score += ri.score
+
+            if ri.score > 0.5:
+                A_bibcodes.add(ri.bibcode)
 
         for rs in B_uniques[stem]:
             ri = resolved[rs]
@@ -774,14 +781,8 @@ def compare_resolved(
             if ri.score > 0.5:
                 B_bibcodes.add(ri.bibcode)
 
-        for rs in A_uniques[stem]:
-            ri = resolved[rs]
-            A_score += ri.score
-
-            if ri.score > 0.5 and ri.bibcode not in B_bibcodes:
-                # Oh no, did we lose a good reference???
-                info.lost_resolutions.add(rs)
-
+        info.n_lost = len(A_bibcodes - B_bibcodes)
+        info.n_gained = len(B_bibcodes - A_bibcodes)
         info.score_delta = B_score - A_score
 
     return results

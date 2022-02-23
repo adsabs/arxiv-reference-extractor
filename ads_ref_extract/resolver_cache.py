@@ -115,7 +115,7 @@ def _resolve_references(refstrings, api_token, logger):
         if tnow - tlast > 180:
             tp = n_resolved / (tnow - t0)
             logger.warn(
-                f"reference resolution status: {n_resolved} resolved, throughput {tp} resolutions/second"
+                f"reference resolution status: {n_resolved} resolved, throughput {tp:.2f} resolutions/second"
             )
             tlast = tnow
 
@@ -127,7 +127,7 @@ def _resolve_references(refstrings, api_token, logger):
     tnow = time.time()
     tp = n_resolved / (tnow - t0)
     logger.warn(
-        f"finished resolving: {n_resolved} resolved, throughput {tp} resolutions/second"
+        f"finished resolving: {n_resolved} resolved, throughput {tp:.2f} resolutions/second"
     )
 
 
