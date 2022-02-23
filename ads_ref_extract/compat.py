@@ -201,7 +201,10 @@ The fulltext filenames typically are in one of these forms:
             print(
                 f"ads_ref_extract: launching in pipeline mode, session id {session_id}"
             )
-            print(f"ads_ref_extract: logs to `{log_path / 'extractrefs.stderr'}`")
+            print(
+                f"ads_ref_extract: logs to `{log_path / 'extractrefs.stderr'}`",
+                flush=True,
+            )
             log_path.mkdir(parents=True, exist_ok=True)
             log_stream = (log_path / "extractrefs.stderr").open("wt")
 
