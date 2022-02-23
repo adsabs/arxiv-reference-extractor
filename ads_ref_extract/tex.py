@@ -619,7 +619,7 @@ def _match_any(text: str, regex_list: List[re.Pattern]) -> Optional[re.Match]:
 def _probe_one_source(
     filepath: Path, non_main_files: set, session: CompatExtractor
 ) -> Optional[TexSourceItem]:
-    s = str(filepath).lower()
+    s = str(filepath.name).lower()
     item = TexSourceItem(filepath)
 
     if "psfig" in s:
@@ -651,7 +651,7 @@ def _probe_one_source(
 
     basename = s.rsplit(".", 1)[0]
     item.score += _BASENAME_SCORE_DELTAS.get(basename, 0)
-    session.item_trace2("scanning potential TeX source", p=filepath)
+    session.item_trace2("scanning potential TeX source", p=filepath, score=item.score)
 
     try:
         _enc, lines = _file_lines(filepath, session)
