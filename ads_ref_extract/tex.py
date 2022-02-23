@@ -220,6 +220,12 @@ _FORCED_NEWLINE_REGEX = re.compile(r"\\bibitem|\\reference|\\end\{", re.IGNORECA
 _END_REFS_REGEX = re.compile(
     r"^\s*\\end\s*\{(chapthebibliography|thebibliography|references)\}", re.IGNORECASE
 )
+_EMPH_REGEXES = [
+    re.compile(r"\{\\em (.*?)\}"),
+    re.compile(r"\{\\it (.*?)\}"),
+    re.compile(r"\\emph\{(.*?)\}"),
+    re.compile(r"\\textit\{(.*?)\}"),
+]
 
 
 def _split_on_delimited_prefix(text: str, open: str, close: str) -> Tuple[str, str]:
@@ -259,6 +265,10 @@ _FIND_REF_REGEX = re.compile(r"<r>(.*?)<\s*/r\s*>", re.MULTILINE | re.DOTALL)
 def _extract_references(text_path: Path, dump_stream=None) -> List[str]:
     with text_path.open("rt", encoding="utf8") as f:
         text = f.read()
+
+    # For now (?) the reference resolver doesn't handle Unicode quotation marks
+    # well, so strip them out here.
+    text = text.replace("”", '"').replace("“", '"')
 
     if dump_stream is not None:
         print(f"====== text extracted to {text_path} ======", file=dump_stream)
@@ -393,8 +403,12 @@ class TexSourceItem(object):
                     # - When it's \%
                     # - Inside a \href where it's acting as percent-encoding
                     # - Surely other cases to be added, as well
+                    #
+                    # We detect the \href case by looking for % followed by
+                    # hexadecimal characters, not at the beginning of a line
                     if (
-                        len(line) > cidx + 2
+                        cidx > 0
+                        and len(line) > cidx + 2
                         and line[cidx + 1] in _HEX_CHARS
                         and line[cidx + 2] in _HEX_CHARS
                     ):
@@ -402,6 +416,7 @@ class TexSourceItem(object):
                     elif cidx == 0:
                         # Note: we need to remove all comments so that our </r>s
                         # make it into the output
+                        line_in_progress += " "
                         continue
                     elif line[cidx - 1] != "\\":
                         line_in_progress = line[:cidx] + " "
@@ -409,10 +424,8 @@ class TexSourceItem(object):
 
                 m = _FORCED_NEWLINE_REGEX.search(line[1:])
                 if m is not None:
-                    line_in_progress = line[m.start() + 1 :]
+                    line_in_progress = line[m.start() + 1 :] + " "
                     line = line[: m.start() + 1]
-
-                # TODO: implement {\em ...} munging here.
 
                 if _END_REFS_REGEX.search(line) is not None:
                     if cur_ref:
@@ -442,10 +455,10 @@ class TexSourceItem(object):
                         self.tag_ref(tag, cur_ref, ref_type, f_out)
                         n_tagged += 1
 
-                    cur_ref = m[2]
+                    cur_ref = m[2] + " "
                 elif tag is not None:
                     # In the middle of an item
-                    cur_ref += line
+                    cur_ref += line + " "
                 else:
                     # Still looking for the actual bib items
                     print(line, file=f_out)
@@ -483,6 +496,12 @@ class TexSourceItem(object):
         Otherwise we expect `\{tag} Ref text ...` (e.g., consistent with the
         second \reference option).
         """
+
+        # The munging applied here has a non-trivial impact on the success of
+        # the reference resolution stage:
+        for regex in _EMPH_REGEXES:
+            text = regex.sub(r'"\1"', text)
+
         if ref_type == "bibitem":
             left, text = _split_on_delimited_prefix(text, "[", "]")
             tag += left
@@ -619,7 +638,7 @@ def _match_any(text: str, regex_list: List[re.Pattern]) -> Optional[re.Match]:
 def _probe_one_source(
     filepath: Path, non_main_files: set, session: CompatExtractor
 ) -> Optional[TexSourceItem]:
-    s = str(filepath).lower()
+    s = str(filepath.name).lower()
     item = TexSourceItem(filepath)
 
     if "psfig" in s:
@@ -651,7 +670,7 @@ def _probe_one_source(
 
     basename = s.rsplit(".", 1)[0]
     item.score += _BASENAME_SCORE_DELTAS.get(basename, 0)
-    session.item_trace2("scanning potential TeX source", p=filepath)
+    session.item_trace2("scanning potential TeX source", p=filepath, score=item.score)
 
     try:
         _enc, lines = _file_lines(filepath, session)
@@ -836,6 +855,8 @@ def _do_one(settings, until):
     session = CompatExtractor()
     session.config = Config.new_defaults()
     session.logger = _get_quick_logger()
+    session.log_stream = sys.stderr
+    session.output_stream = sys.stdout
 
     ft_path = Path(settings.fulltext).absolute()
 

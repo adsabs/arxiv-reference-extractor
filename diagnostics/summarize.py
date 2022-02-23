@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 """
 Summarize the results of a single Arxiv processing session. Usage:
@@ -21,7 +21,7 @@ sys.path.append(app_dir)
 from ads_ref_extract import config, classic_analytics
 
 if len(sys.argv) != 3:
-    print("usage: ./summarize.py <tag> <session-id>")
+    print(f"usage: {sys.argv[0]} <tag> <session-id>")
     sys.exit(1)
 
 tag = sys.argv[1]

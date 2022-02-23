@@ -1,6 +1,9 @@
 """
 A caching store for the ADS reference resolver microservice, which turns textual
 references ("refstrings") into resolved bibcodes.
+
+The typical throughput of the resolution service is about 1.2 resolutions per
+second, which is why caching is so valuable here.
 """
 
 from collections import namedtuple
@@ -9,6 +12,7 @@ import json
 import logging
 import os
 import requests
+import time
 
 __all__ = ["ResolvedRef", "ResolverCache"]
 
@@ -19,7 +23,19 @@ ResolvedRef = namedtuple("ResolvedRef", "bibcode score")
 
 
 def _get_default_api_token():
-    return os.environ["ADS_DEV_KEY"]
+    token = os.environ.get("ADS_DEV_KEY")
+    if token is not None:
+        return token
+
+    token = os.environ.get("API_TOKEN")
+    if token is not None:
+        if token.startswith("Bearer "):
+            return token.split()[1]
+        return token
+
+    raise Exception(
+        "need an ADS API token but none set in environment; set $ADS_DEV_KEY or $API_TOKEN"
+    )
 
 
 def _resolve_references(refstrings, api_token, logger):
@@ -46,6 +62,8 @@ def _resolve_references(refstrings, api_token, logger):
     """
 
     BATCH_SIZE_LIMIT = 16
+    t0 = time.time()
+    tlast = t0
 
     def resolve_batch(references):
         """
@@ -82,18 +100,35 @@ def _resolve_references(refstrings, api_token, logger):
         raise Exception("unreachable")
 
     batch = []
+    n_resolved = 0
 
     for next_ref in refstrings:
         batch.append(next_ref)
 
         if len(batch) >= BATCH_SIZE_LIMIT:
             for info in resolve_batch(batch):
+                n_resolved += 1
                 yield info
             batch = []
 
+        tnow = time.time()
+        if tnow - tlast > 180:
+            tp = n_resolved / (tnow - t0)
+            logger.warn(
+                f"reference resolution status: {n_resolved} resolved, throughput {tp} resolutions/second"
+            )
+            tlast = tnow
+
     if len(batch):
         for info in resolve_batch(batch):
+            n_resolved += 1
             yield info
+
+    tnow = time.time()
+    tp = n_resolved / (tnow - t0)
+    logger.warn(
+        f"finished resolving: {n_resolved} resolved, throughput {tp} resolutions/second"
+    )
 
 
 class ResolverCache(object):
@@ -152,9 +187,6 @@ class ResolverCache(object):
         resolved = {}
         todo = set()
 
-        if api_token is None:
-            api_token = _get_default_api_token()
-
         for rs in refstrings:
             info = self._get(rs)
             if info is None:
@@ -162,12 +194,17 @@ class ResolverCache(object):
             else:
                 resolved[rs] = info
 
-        if no_rpc:
+        if not todo:
+            pass
+        elif no_rpc:
             logger.warn(f"NOT resolving {len(todo)} reference strings")
 
             for rs in todo:
                 resolved[rs] = ResolvedRef("xxxxxxxxxxxxxxxxxxx", 0.0)
         else:
+            if api_token is None:
+                api_token = _get_default_api_token()
+
             logger.warn(f"resolving {len(todo)} reference strings")
 
             for info in _resolve_references(todo, api_token, logger):
