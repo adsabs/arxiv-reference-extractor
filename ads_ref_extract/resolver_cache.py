@@ -23,7 +23,19 @@ ResolvedRef = namedtuple("ResolvedRef", "bibcode score")
 
 
 def _get_default_api_token():
-    return os.environ["ADS_DEV_KEY"]
+    token = os.environ.get("ADS_DEV_KEY")
+    if token is not None:
+        return token
+
+    token = os.environ.get("API_TOKEN")
+    if token is not None:
+        if token.startswith("Bearer "):
+            return token.split()[1]
+        return token
+
+    raise Exception(
+        "need an ADS API token but none set in environment; set $ADS_DEV_KEY or $API_TOKEN"
+    )
 
 
 def _resolve_references(refstrings, api_token, logger):
