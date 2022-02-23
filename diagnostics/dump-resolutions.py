@@ -20,7 +20,7 @@ sys.path.append(app_dir)
 from ads_ref_extract import config, resolver_cache
 
 if len(sys.argv) < 2:
-    print("usage: {sys.argv[0]} <file1> [file2...]")
+    print(f"usage: {sys.argv[0]} <file1> [file2...]")
     sys.exit(1)
 
 paths = sys.argv[1:]
