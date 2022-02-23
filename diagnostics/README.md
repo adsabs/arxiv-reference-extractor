@@ -99,6 +99,11 @@ Print a comparison of the reference strings extracted from two different
 processing runs of the same session. This uses a "diff"-like output for each
 item which will usually be voluminous.
 
+### ./diff-refstrings.sh {TAG-A} {TAG-B} {ITEM}
+
+Compare the extracted refstrings of two processings of an individual item. This
+uses a colorized, word-level diff display.
+
 ### ./cmp-resolved.py {TAG-A} {TAG-B} {SESSION}
 
 Compare the resolved references extracted from two different processing runs of
