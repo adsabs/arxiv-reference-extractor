@@ -266,10 +266,6 @@ def _extract_references(text_path: Path, dump_stream=None) -> List[str]:
     with text_path.open("rt", encoding="utf8") as f:
         text = f.read()
 
-    # For now (?) the reference resolver doesn't handle Unicode quotation marks
-    # well, so strip them out here.
-    text = text.replace("”", '"').replace("“", '"')
-
     if dump_stream is not None:
         print(f"====== text extracted to {text_path} ======", file=dump_stream)
         print(text, file=dump_stream)
@@ -289,15 +285,23 @@ def _extract_references(text_path: Path, dump_stream=None) -> List[str]:
 
 
 def _postprocess_one_ref(ref: str) -> str:
+    from .normalize import refstring_normalizer
+
     # Hyphenations (which we try to prevent while munging)
     ref = ref.replace("-\n", "")
 
     # TODO: "split eprints"
 
-    # Collapse and normalize whitespace
-    ref = " ".join(ref.split())
+    # As of 2022 March, we get the best results out of the reference resolver
+    # *on average* by normalizing away various similar Unicode characters and
+    # dropping all of our outputs down to plain ASCII. Which is a bummer! Also,
+    # there are plenty of individual cases where the Unicode refstring resolves
+    # and the ASCII-fied one doesn't. Hopefully the resolver will evolve to a
+    # place where the full Unicode input yields the best results on average. In
+    # the meantime, let's do what yields the best end results:
 
-    ref = ref.strip()
+    ref = refstring_normalizer.normalize(ref)
+    ref = ref.encode("ascii", "ignore").decode("ascii")
     return ref
 
 

@@ -104,14 +104,18 @@ item which will usually be voluminous.
 Compare the extracted refstrings of two processings of an individual item. This
 uses a colorized, word-level diff display.
 
-### ./cmp-resolved.py {TAG-A} {TAG-B} {SESSION}
+### ./cmp-resolved.py [-m {MAX-RESOLVES}] {TAG-A} {TAG-B} {SESSION}
 
 Compare the resolved references extracted from two different processing runs of
 the same session. This relies on API calls to the ADS reference resolver
 service, which (1) are not very fast and (2) are rate-limited. Therefore we use
 a local "reference resolver cache" which caches resolution results for input
 refstrings. This doesn't speed up initial processing, but dramatically improves
-results when only small changes are made.
+results when only small changes are made. The `-m` option limits the number of
+analyzed items to keep the number of API calls below the specified threshold.
+This is done using a quasi-random but repeatable sorting of the input items, so
+that successive invocations will analyze progressively larger subsets of the
+whole session.
 
 If any API calls need to be made (which is almost always true), you must set the
 environment variable `$ADS_DEV_KEY` to an API token. Resolution for a single
@@ -119,6 +123,17 @@ Arxiv processing session can take *hours* if most of the references aren't
 cached. (The microservice averages about 1.2 seconds per refstring.) While
 transient network errors can also kill the analysis program, if you rerun it, it
 will resume where it left off, thanks to the local cache.
+
+### ./diff-resolutions.py {TAG-A} {TAG-B} {ITEM}
+
+Compare the resolved references extracted from two different processings of the
+specified item. This will perform reference resolver API calls if needed.
+
+This will print an analysis of "lost" bibcodes: bibcodes that were identified in
+the "A" tag but not in the "B" tag. For each such bibcode, the tool will print
+out the refstring in A that resolved to it, and the *unresolved* refstring in B
+that is closest to that refstring, as quantified by the Levenshtein edit
+distance.
 
 ### ./run-it.sh {DRIVER-ARGS...}
 

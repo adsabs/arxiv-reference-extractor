@@ -3,7 +3,7 @@
 """
 Compare the resolved references from two Arxiv processing sessions. Usage:
 
-    ./cmp-resolved.py <tagA> <tagB> <sessionid>
+    ./cmp-resolved.py [-m <maxresolves>] <tagA> <tagB> <sessionid>
 
 ... where the <tags> are the names of two directories within $results_dir
 and <sessionid> is the Arxiv update session name (e.g. 2021-11-07).
@@ -12,6 +12,7 @@ Requires $ADS_DEV_KEY environment variable to be set so that we can use the
 reference resolver service if needed.
 """
 
+import argparse
 import os.path as osp
 from pathlib import Path
 import sys
@@ -23,13 +24,19 @@ sys.path.append(app_dir)
 
 from ads_ref_extract import config, classic_analytics, resolver_cache
 
-if len(sys.argv) != 4:
-    print(f"usage: {sys.argv[0]} <tagA> <tagB> <session-id>")
-    sys.exit(1)
+# Args
 
-tagA = sys.argv[1]
-tagB = sys.argv[2]
-session_id = sys.argv[3]
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "-m",
+    "--max-resolves",
+    type=int,
+    help="Maximum number of refstring resolutions to perform",
+)
+parser.add_argument("tag_a")
+parser.add_argument("tag_b")
+parser.add_argument("session_id")
+settings = parser.parse_args()
 
 no_rpc = False  # debugging setting
 
@@ -38,36 +45,48 @@ diagnostics_cfg = config.parse_dumb_config_file(
 )
 
 cfgA = config.Config.new_defaults()
-cfgA.logs_base = Path(f"{diagnostics_cfg['results_dir']}/{tagA}/logs")
+cfgA.logs_base = Path(f"{diagnostics_cfg['results_dir']}/{settings.tag_a}/logs")
 cfgA.target_refs_base = Path(
-    f"{diagnostics_cfg['results_dir']}/{tagA}/references/sources"
+    f"{diagnostics_cfg['results_dir']}/{settings.tag_a}/references/sources"
 )
 
 cfgB = config.Config.new_defaults()
-cfgB.logs_base = Path(f"{diagnostics_cfg['results_dir']}/{tagB}/logs")
+cfgB.logs_base = Path(f"{diagnostics_cfg['results_dir']}/{settings.tag_b}/logs")
 cfgB.target_refs_base = Path(
-    f"{diagnostics_cfg['results_dir']}/{tagB}/references/sources"
+    f"{diagnostics_cfg['results_dir']}/{settings.tag_b}/references/sources"
 )
 
 db_path = diagnostics_cfg["resolver_cache_db_path"]
 
 with resolver_cache.ResolverCache(db_path) as rcache:
     cmp = classic_analytics.compare_resolved(
-        session_id, cfgA, cfgB, rcache, no_rpc=no_rpc
+        settings.session_id,
+        cfgA,
+        cfgB,
+        rcache,
+        no_rpc=no_rpc,
+        max_resolves=settings.max_resolves,
+    )
+
+    print(
+        "{:20}  {:12}  {:>4}  {:>8}  {:>6}  {:>6}  {:>6}".format(
+            "ITEM", "EXT-A/B", "NR_A", "NR_(B-A)", "NLOST", "NGAIN", "DSCORE"
+        )
     )
 
     for stem, info in sorted(
         cmp.items(), key=lambda kv: kv[1].score_delta, reverse=True
     ):
-        if info.score_delta != 0:
-            print(info)
-            for lrs in info.lost_resolutions:
-                print("       ", lrs)
+        ext = f"{info.A_ext}/{info.B_ext}"
+        print(
+            f"{stem:20}  {ext:12}  {info.n_strings_A:4d}  {info.n_strings_B - info.n_strings_A:+8d}  {info.n_lost:6d}  {info.n_gained:6d}  {info.score_delta:+6.1f}"
+        )
 
+    print()
     tot = 0
 
     for info in cmp.values():
         tot += info.score_delta
 
     print("N comparisons:", len(cmp))
-    print("Total delta:", tot)
+    print(f"Total delta: {tot:+.1f}")

@@ -4,13 +4,15 @@ extraction session.
 """
 
 import difflib
+import editdistance
+import hashlib
 import logging
-import os
 from pathlib import Path
-import shutil
 import subprocess
-import sys
+from typing import Optional, Set
 
+from .config import Config
+from .resolver_cache import ResolverCache
 from .utils import split_item_path
 
 __all__ = [
@@ -580,15 +582,14 @@ class ClassicSessionReprocessor(object):
 
         self._validate()
 
-        # The *input* log directory , which we use to know what items to
-        # process, is derived from `config.logs_base`. This is not the same
-        # thing as `self.logs_out_base`, where the pipeline log files should
-        # land. We have to get the session's correct log directory (which may be
-        # in a year-based subdirectory) and make sure to mount it into the
-        # container so that the pipeline can actually access it. The
-        # in-container filename has to be in a directory whose name is
-        # `session_id` since the pipeline code infers the session ID from that
-        # name.
+        # The *input* log directory, which we use to know what items to process,
+        # is derived from `config.logs_base`. This is not the same thing as
+        # `self.logs_out_base`, where the pipeline log files should land. We
+        # have to get the session's correct log directory (which may be in a
+        # year-based subdirectory) and make sure to mount it into the container
+        # so that the pipeline can actually access it. The in-container filename
+        # has to be in a directory whose name is `session_id` since the pipeline
+        # code infers the session ID from that name.
         log_dir = self.config.classic_session_log_path(session_id)
 
         argv = [
@@ -636,7 +637,7 @@ class ClassicSessionReprocessor(object):
         subprocess.check_call(argv, shell=False, close_fds=True)
 
 
-def _maybe_load_raw_file(path, logger):
+def _maybe_load_raw_file(path, logger) -> Set[str]:
     MAX_RS_LEN = 512
     refstrings = set()
 
@@ -679,21 +680,31 @@ class ResolveComparison(object):
     stem = None
     A_ext = None
     B_ext = None
+    n_strings_A = 0
+    n_strings_B = 0
     score_delta = None
-    lost_resolutions = None
+    n_lost = 0
+    n_gained = 0
+    lost_bibcode_guesses = None
 
-    def __init__(self):
-        self.lost_resolutions = set()
 
-    def __str__(self):
-        return f"""Resolve comparison {self.stem}:
-    exts = {self.A_ext}, {self.B_ext}
-    score_delta = {self.score_delta:.1f}
-    #lost = {len(self.lost_resolutions)}"""
+def md5(text: str) -> bytes:
+    s = hashlib.md5()
+    s.update(text.encode("utf8"))
+    return s.digest()
+
+
+SUCCESSFUL_RESOLUTION_THRESHOLD = 0.5
 
 
 def compare_resolved(
-    session_id, A_config, B_config, rcache, logger=default_logger, **kwargs
+    session_id: str,
+    A_config: Config,
+    B_config: Config,
+    rcache: ResolverCache,
+    max_resolves: Optional[int] = None,
+    logger=default_logger,
+    **kwargs,
 ):
     """
     Compare the results of reference extraction and resolution for two different
@@ -705,11 +716,11 @@ def compare_resolved(
     This function will resolve the reference strings to bibcodes using the ADS
     reference resolution microservice. It interfaces with this microservice via
     the ``rcache`` argument, which should be a ResolverCache instance. The
-    resolver cache batches resultion requests and, yes, caches their results. It
+    resolver cache batches resolution requests and, yes, caches their results. It
     takes about 1--1.5 seconds to resolve a reference, so the resolution process
     can be slow.
-
     """
+
     # First, figure out which items in the two sessions were resolved.
 
     er1 = A_config.classic_session_log_path(session_id) / "extractrefs.out"
@@ -725,35 +736,64 @@ def compare_resolved(
     stems = set(A_results.keys())
     stems.update(B_results.keys())
 
+    # We need a reproducible but random-ish sort of the stems if we're going to do
+    # a partial comparison.
+
+    stems = sorted(stems, key=md5)
+
     # Now figure out the diffs for each item and build up a list of reference
-    # strings to resolve. By only looking at changed items, w decrease the
+    # strings to resolve. By only looking at changed items, we may decrease the
     # number of resolutions we need to perform by a factor of ~4.
     #
     # We batch up all of the references to resolve in order to make optimal use
-    # of the resolver microservice API.
+    # of the resolver microservice API. We also have a mechanism to cap the
+    # number of reference resolutions to perform, so that we can do analytics
+    # without needing to resolve every single string first (which can take more
+    # than 12 hours).
 
     A_uniques = {}
     B_uniques = {}
     to_resolve = set()
     results = {}
+    n_resolves_needed = 0
 
-    for stem in stems:
-        A_ext, A_path = A_results.get(stem, (None, None))
-        B_ext, B_path = B_results.get(stem, (None, None))
+    def source():
+        for stem in stems:
+            A_ext, A_path = A_results.get(stem, (None, None))
+            B_ext, B_path = B_results.get(stem, (None, None))
 
-        A_refstrings = _maybe_load_raw_file(A_path, logger)
-        B_refstrings = _maybe_load_raw_file(B_path, logger)
+            A_refstrings = _maybe_load_raw_file(A_path, logger)
+            B_refstrings = _maybe_load_raw_file(B_path, logger)
 
-        A_uniques[stem] = A_refstrings - B_refstrings
-        B_uniques[stem] = B_refstrings - A_refstrings
-        to_resolve.update(B_refstrings ^ A_refstrings)
+            A_uniques[stem] = A_refstrings - B_refstrings
+            B_uniques[stem] = B_refstrings - A_refstrings
 
-        info = ResolveComparison()
-        info.stem = stem
-        info.A_ext = A_ext
-        info.B_ext = B_ext
+            info = ResolveComparison()
+            info.stem = stem
+            info.A_ext = A_ext
+            info.B_ext = B_ext
+            info.n_strings_A = len(A_refstrings)
+            info.n_strings_B = len(B_refstrings)
 
+            yield stem, info, B_refstrings ^ A_refstrings
+
+    for stem, info, this_to_resolve in source():
+        this_need_rpc = rcache.count_need_rpc(this_to_resolve)
+
+        if (
+            max_resolves is not None
+            and n_resolves_needed + this_need_rpc > max_resolves
+        ):
+            break
+
+        to_resolve.update(this_to_resolve)
         results[stem] = info
+        n_resolves_needed += this_need_rpc
+
+    if max_resolves is not None and len(results) < len(stems):
+        logger.warn(
+            f"stopping at {len(results)} items (out of {len(stems)}) to keep number of resolutions below {max_resolves}"
+        )
 
     # Resolve all the things!
 
@@ -761,27 +801,106 @@ def compare_resolved(
 
     # Postprocess analytics
 
-    for stem in stems:
+    for stem, info in results.items():
         info = results[stem]
         A_score = 0
         B_score = 0
+        A_bibcodes = set()
         B_bibcodes = set()
-
-        for rs in B_uniques[stem]:
-            ri = resolved[rs]
-            B_score += ri.score
-
-            if ri.score > 0.5:
-                B_bibcodes.add(ri.bibcode)
 
         for rs in A_uniques[stem]:
             ri = resolved[rs]
             A_score += ri.score
 
-            if ri.score > 0.5 and ri.bibcode not in B_bibcodes:
-                # Oh no, did we lose a good reference???
-                info.lost_resolutions.add(rs)
+            if ri.score > SUCCESSFUL_RESOLUTION_THRESHOLD:
+                A_bibcodes.add(ri.bibcode)
 
+        for rs in B_uniques[stem]:
+            ri = resolved[rs]
+            B_score += ri.score
+
+            if ri.score > SUCCESSFUL_RESOLUTION_THRESHOLD:
+                B_bibcodes.add(ri.bibcode)
+
+        info.n_lost = len(A_bibcodes - B_bibcodes)
+        info.n_gained = len(B_bibcodes - A_bibcodes)
         info.score_delta = B_score - A_score
 
     return results
+
+
+def compare_item_resolutions(
+    stem: str,
+    A_config: Config,
+    B_config: Config,
+    rcache: ResolverCache,
+    logger=default_logger,
+):
+    A_path = A_config.target_refs_base / (stem + ".raw")
+    B_path = B_config.target_refs_base / (stem + ".raw")
+
+    A_refstrings = _maybe_load_raw_file(A_path, logger)
+    B_refstrings = _maybe_load_raw_file(B_path, logger)
+
+    resolved = rcache.resolve(A_refstrings | B_refstrings)
+
+    # Reverse-map bibcodes to refstrings, and partition out
+    # failing refstrings
+
+    A_score = 0.0
+    A_bibcodes = {}
+    B_score = 0.0
+    B_bibcodes = {}
+
+    for rs in A_refstrings:
+        ri = resolved[rs]
+        A_score += ri.score
+
+        if ri.score > SUCCESSFUL_RESOLUTION_THRESHOLD:
+            A_bibcodes[ri.bibcode] = rs
+
+    for rs in B_refstrings:
+        ri = resolved[rs]
+        B_score += ri.score
+
+        if ri.score > SUCCESSFUL_RESOLUTION_THRESHOLD:
+            B_bibcodes[ri.bibcode] = rs
+
+    # Compute some diagnostics
+
+    info = ResolveComparison()
+    info.stem = stem
+    info.n_strings_A = len(A_refstrings)
+    info.n_strings_B = len(B_refstrings)
+    info.score_delta = B_score - A_score
+
+    A_bibset = frozenset(A_bibcodes.keys())
+    B_bibset = frozenset(B_bibcodes.keys())
+    lost_bibs = A_bibset - B_bibset
+    info.n_lost = len(lost_bibs)
+    info.n_gained = len(B_bibset - A_bibset)
+
+    # Details about lost bibcodes (ones resolved in A, but not resolved in B)
+
+    guesses = {}
+
+    for bib in lost_bibs:
+        # The refstring that successfully resolved to the bibcode in A:
+        A_rs = A_bibcodes[bib]
+
+        # What unresolved refstring in B is closest to this one?
+
+        min_distance = 99999
+        B_rs = "(no candidates}"
+
+        for rs in B_refstrings:
+            d = editdistance.distance(A_rs, rs)
+            if d < min_distance:
+                min_distance = d
+                B_rs = rs
+
+        guesses[bib] = (A_rs, min_distance, B_rs)
+
+    info.lost_bibcode_guesses = guesses
+
+    return info

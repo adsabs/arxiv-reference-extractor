@@ -87,7 +87,7 @@ def _resolve_references(refstrings, api_token, logger):
                 data=data,
             )
 
-            if response.status_code == 502:
+            if response.status_code in (502, 504):
                 logger.warn(
                     f"retrying resolver query after error {response.status_code}"
                 )
@@ -115,7 +115,7 @@ def _resolve_references(refstrings, api_token, logger):
         if tnow - tlast > 180:
             tp = n_resolved / (tnow - t0)
             logger.warn(
-                f"reference resolution status: {n_resolved} resolved, throughput {tp} resolutions/second"
+                f"reference resolution status: {n_resolved} resolved, throughput {tp:.2f} resolutions/second"
             )
             tlast = tnow
 
@@ -127,7 +127,7 @@ def _resolve_references(refstrings, api_token, logger):
     tnow = time.time()
     tp = n_resolved / (tnow - t0)
     logger.warn(
-        f"finished resolving: {n_resolved} resolved, throughput {tp} resolutions/second"
+        f"finished resolving: {n_resolved} resolved, throughput {tp:.2f} resolutions/second"
     )
 
 
@@ -170,6 +170,19 @@ class ResolverCache(object):
         packed = f"{score}/{bibcode}"
         self._handle[refstring.encode("utf-8")] = packed.encode("utf-8")
         return ResolvedRef(bibcode, score)
+
+    def count_need_rpc(self, refstrings):
+        """
+        Count the number of refstrings that would need an RPC call to resolve; i.e.,
+        the number that aren't locally cached.
+        """
+        n = 0
+
+        for rs in refstrings:
+            if self._get(rs) is None:
+                n += 1
+
+        return n
 
     def resolve(self, refstrings, logger=default_logger, api_token=None, no_rpc=False):
         """
