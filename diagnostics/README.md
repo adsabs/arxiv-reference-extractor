@@ -124,6 +124,17 @@ cached. (The microservice averages about 1.2 seconds per refstring.) While
 transient network errors can also kill the analysis program, if you rerun it, it
 will resume where it left off, thanks to the local cache.
 
+### ./diff-resolutions.py {TAG-A} {TAG-B} {ITEM}
+
+Compare the resolved references extracted from two different processings of the
+specified item. This will perform reference resolver API calls if needed.
+
+This will print an analysis of "lost" bibcodes: bibcodes that were identified in
+the "A" tag but not in the "B" tag. For each such bibcode, the tool will print
+out the refstring in A that resolved to it, and the *unresolved* refstring in B
+that is closest to that refstring, as quantified by the Levenshtein edit
+distance.
+
 ### ./run-it.sh {DRIVER-ARGS...}
 
 A helper script that runs the extraction pipeline inside a Docker container. The

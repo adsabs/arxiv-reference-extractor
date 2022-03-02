@@ -4,11 +4,12 @@ extraction session.
 """
 
 import difflib
+import editdistance
 import hashlib
 import logging
 from pathlib import Path
 import subprocess
-from typing import Optional
+from typing import Optional, Set
 
 from .config import Config
 from .resolver_cache import ResolverCache
@@ -636,7 +637,7 @@ class ClassicSessionReprocessor(object):
         subprocess.check_call(argv, shell=False, close_fds=True)
 
 
-def _maybe_load_raw_file(path, logger):
+def _maybe_load_raw_file(path, logger) -> Set[str]:
     MAX_RS_LEN = 512
     refstrings = set()
 
@@ -684,12 +685,16 @@ class ResolveComparison(object):
     score_delta = None
     n_lost = 0
     n_gained = 0
+    lost_bibcode_guesses = None
 
 
 def md5(text: str) -> bytes:
     s = hashlib.md5()
     s.update(text.encode("utf8"))
     return s.digest()
+
+
+SUCCESSFUL_RESOLUTION_THRESHOLD = 0.5
 
 
 def compare_resolved(
@@ -711,11 +716,11 @@ def compare_resolved(
     This function will resolve the reference strings to bibcodes using the ADS
     reference resolution microservice. It interfaces with this microservice via
     the ``rcache`` argument, which should be a ResolverCache instance. The
-    resolver cache batches resultion requests and, yes, caches their results. It
+    resolver cache batches resolution requests and, yes, caches their results. It
     takes about 1--1.5 seconds to resolve a reference, so the resolution process
     can be slow.
-
     """
+
     # First, figure out which items in the two sessions were resolved.
 
     er1 = A_config.classic_session_log_path(session_id) / "extractrefs.out"
@@ -807,14 +812,14 @@ def compare_resolved(
             ri = resolved[rs]
             A_score += ri.score
 
-            if ri.score > 0.5:
+            if ri.score > SUCCESSFUL_RESOLUTION_THRESHOLD:
                 A_bibcodes.add(ri.bibcode)
 
         for rs in B_uniques[stem]:
             ri = resolved[rs]
             B_score += ri.score
 
-            if ri.score > 0.5:
+            if ri.score > SUCCESSFUL_RESOLUTION_THRESHOLD:
                 B_bibcodes.add(ri.bibcode)
 
         info.n_lost = len(A_bibcodes - B_bibcodes)
@@ -822,3 +827,80 @@ def compare_resolved(
         info.score_delta = B_score - A_score
 
     return results
+
+
+def compare_item_resolutions(
+    stem: str,
+    A_config: Config,
+    B_config: Config,
+    rcache: ResolverCache,
+    logger=default_logger,
+):
+    A_path = A_config.target_refs_base / (stem + ".raw")
+    B_path = B_config.target_refs_base / (stem + ".raw")
+
+    A_refstrings = _maybe_load_raw_file(A_path, logger)
+    B_refstrings = _maybe_load_raw_file(B_path, logger)
+
+    resolved = rcache.resolve(A_refstrings | B_refstrings)
+
+    # Reverse-map bibcodes to refstrings, and partition out
+    # failing refstrings
+
+    A_score = 0.0
+    A_bibcodes = {}
+    B_score = 0.0
+    B_bibcodes = {}
+
+    for rs in A_refstrings:
+        ri = resolved[rs]
+        A_score += ri.score
+
+        if ri.score > SUCCESSFUL_RESOLUTION_THRESHOLD:
+            A_bibcodes[ri.bibcode] = rs
+
+    for rs in B_refstrings:
+        ri = resolved[rs]
+        B_score += ri.score
+
+        if ri.score > SUCCESSFUL_RESOLUTION_THRESHOLD:
+            B_bibcodes[ri.bibcode] = rs
+
+    # Compute some diagnostics
+
+    info = ResolveComparison()
+    info.stem = stem
+    info.n_strings_A = len(A_refstrings)
+    info.n_strings_B = len(B_refstrings)
+    info.score_delta = B_score - A_score
+
+    A_bibset = frozenset(A_bibcodes.keys())
+    B_bibset = frozenset(B_bibcodes.keys())
+    lost_bibs = A_bibset - B_bibset
+    info.n_lost = len(lost_bibs)
+    info.n_gained = len(B_bibset - A_bibset)
+
+    # Details about lost bibcodes (ones resolved in A, but not resolved in B)
+
+    guesses = {}
+
+    for bib in lost_bibs:
+        # The refstring that successfully resolved to the bibcode in A:
+        A_rs = A_bibcodes[bib]
+
+        # What unresolved refstring in B is closest to this one?
+
+        min_distance = 99999
+        B_rs = "(no candidates}"
+
+        for rs in B_refstrings:
+            d = editdistance.distance(A_rs, rs)
+            if d < min_distance:
+                min_distance = d
+                B_rs = rs
+
+        guesses[bib] = (A_rs, min_distance, B_rs)
+
+    info.lost_bibcode_guesses = guesses
+
+    return info
