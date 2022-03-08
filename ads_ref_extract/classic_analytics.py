@@ -869,6 +869,10 @@ def compare_resolved(
             info.B_ext = B_ext
             info.n_strings_A = len(A_refstrings)
             info.n_strings_B = len(B_refstrings)
+            info.n_tried_A = len(A_uniques[stem])
+            info.n_tried_B = len(B_uniques[stem])
+            info.n_succeeded_A = 0
+            info.n_succeeded_B = 0
 
             yield stem, info, B_refstrings ^ A_refstrings
 
@@ -909,6 +913,7 @@ def compare_resolved(
 
             if ri.score > SUCCESSFUL_RESOLUTION_THRESHOLD:
                 A_bibcodes.add(ri.bibcode)
+                info.n_succeeded_A += 1
 
         for rs in B_uniques[stem]:
             ri = resolved[rs]
@@ -916,9 +921,11 @@ def compare_resolved(
 
             if ri.score > SUCCESSFUL_RESOLUTION_THRESHOLD:
                 B_bibcodes.add(ri.bibcode)
+                info.n_succeeded_B += 1
 
         info.n_lost = len(A_bibcodes - B_bibcodes)
         info.n_gained = len(B_bibcodes - A_bibcodes)
+        info.A_score = A_score
         info.score_delta = B_score - A_score
 
     return results
