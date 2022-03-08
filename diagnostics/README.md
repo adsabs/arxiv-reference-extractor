@@ -93,11 +93,11 @@ of the same session. This doesn't compare the reference strings that were
 extracted but does compare how many items were successfully processed, if any
 regressed in B relative to A, etc.
 
-### ./cmp-refstrings.py {TAG-A} {TAG-B} {SESSION}
+### ./cmp-refstrings.py [--diff] {TAG-A} {TAG-B} {SESSION}
 
 Print a comparison of the reference strings extracted from two different
-processing runs of the same session. This uses a "diff"-like output for each
-item which will usually be voluminous.
+processing runs of the same session. If `--diff` is given, this includes a
+"diff"-like output for each item (which will usually be voluminous).
 
 ### ./diff-refstrings.sh {TAG-A} {TAG-B} {ITEM}
 
