@@ -596,7 +596,7 @@ def compare_refstrings(
             else:
                 ext = f"{A_ext} => {B_ext}"
 
-            yield f"~~~ {stem}({ext}): {A_desc} => {B_desc}\n"
+            yield f"~~~ {stem}({ext}): {A_desc} => {B_desc}  growth={growth_dB:+.2f}  churn={churn:.2f}\n"
 
             for line in diffout:
                 if (
