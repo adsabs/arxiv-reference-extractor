@@ -615,10 +615,10 @@ def compare_refstrings(
 
     yield f">>> {n_items_same} unchanged items\n"
     yield f">>> {n_items_diff} changed items\n"
-    yield f">>> {n_both_empty} items empty in both A and B\n"
     yield f">>> {n_withdrawn} withdrawn items ignored in comparison\n"
+    yield f">>> {n_both_empty - n_withdrawn} non-withdrawn items empty in both A and B\n"
     yield f">>> {n_fixed} items fixed in B, gaining {n_refstrings_fixed} refstrings\n"
-    yield f">>> {len(broken_items)} items broken in B, losing {n_refstrings_broken} refstrings:\n"
+    yield f">>> {len(broken_items)} items broken in B, losing {n_refstrings_broken} refstrings\n"
 
     if broken_items:
         yield "\n"
