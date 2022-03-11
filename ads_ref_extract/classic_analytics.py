@@ -462,7 +462,7 @@ def compare_refstrings(
     n_both_empty = 0
     n_fixed = 0
     n_refstrings_fixed = 0
-    n_broken = 0
+    broken_items = set()
     n_refstrings_broken = 0
 
     # the "growth/churn" histogram:
@@ -528,7 +528,7 @@ def compare_refstrings(
                 n_fixed += 1
                 n_refstrings_fixed += nB
         elif nB == 0:
-            n_broken += 1
+            broken_items.add(stem)
             n_refstrings_broken += nA
         else:
             n_gc += 1
@@ -590,7 +590,14 @@ def compare_refstrings(
     yield f">>> {n_items_diff} changed items\n"
     yield f">>> {n_both_empty} items empty in both A and B\n"
     yield f">>> {n_fixed} items fixed in B, gaining {n_refstrings_fixed} refstrings\n"
-    yield f">>> {n_broken} items broken in B, losing {n_refstrings_broken} refstrings\n"
+    yield f">>> {len(broken_items)} items broken in B, losing {n_refstrings_broken} refstrings:\n"
+
+    if broken_items:
+        yield "\n"
+        for s in sorted(broken_items):
+            yield f"    {s}\n"
+        yield "\n"
+
     yield f">>> {n_gc} items non-empty in both A and B:\n"
     yield "\n"
     yield "                   low   high  |      delta\n"
