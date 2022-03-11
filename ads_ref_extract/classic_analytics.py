@@ -445,6 +445,27 @@ def compare_refstrings(
         (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger)
     )
 
+    # Set up to deal with withdrawals. They're not failures, but they can't
+    # produce references.
+
+    er1 = A_config.classic_session_log_path(session_id) / "extractrefs.stderr"
+    er2 = B_config.classic_session_log_path(session_id) / "extractrefs.stderr"
+    n_withdrawn = 0
+
+    for log in (er1, er2):
+        if not log.exists():
+            continue
+
+        with log.open("rt") as f:
+            for line in f:
+                if "% withdrawn" not in line:
+                    continue
+
+                item = line.split("@i")[1].split()[0]
+                A_results[item] = ("tex.gz", "withdrawn")
+                B_results[item] = ("tex.gz", "withdrawn")
+                n_withdrawn += 1
+
     # For each item, read the two associated sets of refstring outputs, emit the
     # differences between the two, and accumulate statistics.
 
@@ -477,6 +498,9 @@ def compare_refstrings(
         if A_path is None:
             A_lines = []
             A_desc = "(missing)"
+        elif A_path == "withdrawn":
+            A_lines = []
+            A_desc = "(withdrawn)"
         else:
             with open(A_path, "rb") as f:
                 A_lines = f.readlines()[2:]
@@ -485,6 +509,9 @@ def compare_refstrings(
         if B_path is None:
             B_lines = []
             B_desc = "(missing)"
+        elif B_path == "withdrawn":
+            B_lines = []
+            B_desc = "(withdrawn)"
         else:
             with open(B_path, "rb") as f:
                 B_lines = f.readlines()[2:]
@@ -589,6 +616,7 @@ def compare_refstrings(
     yield f">>> {n_items_same} unchanged items\n"
     yield f">>> {n_items_diff} changed items\n"
     yield f">>> {n_both_empty} items empty in both A and B\n"
+    yield f">>> {n_withdrawn} withdrawn items ignored in comparison\n"
     yield f">>> {n_fixed} items fixed in B, gaining {n_refstrings_fixed} refstrings\n"
     yield f">>> {len(broken_items)} items broken in B, losing {n_refstrings_broken} refstrings:\n"
 
