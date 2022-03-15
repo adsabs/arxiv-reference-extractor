@@ -7,6 +7,7 @@ import difflib
 import editdistance
 import hashlib
 import logging
+import math
 from pathlib import Path
 import subprocess
 from typing import Optional, Set
@@ -409,7 +410,9 @@ def compare_outcomes(
         yield f">>> {n_ignored_pdfs} ignored PDF-only items\n"
 
 
-def compare_refstrings(session_id, A_config, B_config, logger=default_logger):
+def compare_refstrings(
+    session_id, A_config, B_config, show_diff=False, logger=default_logger
+):
     """
     Given two processing passes of a single Arxiv update session, generate
     textual output summarizing the differences between the reference strings
@@ -442,6 +445,27 @@ def compare_refstrings(session_id, A_config, B_config, logger=default_logger):
         (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger)
     )
 
+    # Set up to deal with withdrawals. They're not failures, but they can't
+    # produce references.
+
+    er1 = A_config.classic_session_log_path(session_id) / "extractrefs.stderr"
+    er2 = B_config.classic_session_log_path(session_id) / "extractrefs.stderr"
+    n_withdrawn = 0
+
+    for log in (er1, er2):
+        if not log.exists():
+            continue
+
+        with log.open("rt") as f:
+            for line in f:
+                if "% withdrawn" not in line:
+                    continue
+
+                item = line.split("@i")[1].split()[0]
+                A_results[item] = ("tex.gz", "withdrawn")
+                B_results[item] = ("tex.gz", "withdrawn")
+                n_withdrawn += 1
+
     # For each item, read the two associated sets of refstring outputs, emit the
     # differences between the two, and accumulate statistics.
 
@@ -451,8 +475,21 @@ def compare_refstrings(session_id, A_config, B_config, logger=default_logger):
 
     n_items_same = 0
     n_items_diff = 0
+    n_refstrings_A = 0
+    n_refstrings_B = 0
+    n_refstrings_same = 0
     n_refstrings_plus = 0
     n_refstrings_minus = 0
+    n_both_empty = 0
+    n_fixed = 0
+    n_refstrings_fixed = 0
+    broken_items = set()
+    n_refstrings_broken = 0
+
+    # the "growth/churn" histogram:
+    n_gc = 0
+    gc_histo = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]  # counting *items*
+    refstring_growth_histo = [0] * 5  # counting delta-refstrings
 
     for stem in stems:
         A_ext, A_path = A_results.get(stem, ("missing", None))
@@ -461,6 +498,9 @@ def compare_refstrings(session_id, A_config, B_config, logger=default_logger):
         if A_path is None:
             A_lines = []
             A_desc = "(missing)"
+        elif A_path == "withdrawn":
+            A_lines = []
+            A_desc = "(withdrawn)"
         else:
             with open(A_path, "rb") as f:
                 A_lines = f.readlines()[2:]
@@ -469,10 +509,78 @@ def compare_refstrings(session_id, A_config, B_config, logger=default_logger):
         if B_path is None:
             B_lines = []
             B_desc = "(missing)"
+        elif B_path == "withdrawn":
+            B_lines = []
+            B_desc = "(withdrawn)"
         else:
             with open(B_path, "rb") as f:
                 B_lines = f.readlines()[2:]
             B_desc = str(len(B_lines))
+
+        # About ~0.1% of refstrings in given run are within-file duplicates, so
+        # numbers change depending on whether we count *lines* or the sizes of
+        # the sets:
+
+        setA = frozenset(A_lines)
+        setB = frozenset(B_lines)
+        nA = len(setA)
+        nB = len(setB)
+        n_refstrings_A += nA
+        n_refstrings_B += nB
+        n_refstrings_same += len(setA & setB)
+        n_refstrings_plus += len(setB - setA)
+        n_refstrings_minus += len(setA - setB)
+
+        # Churn: difference in refstring text, ignoring ordering. Churn of 1.0
+        # is complete replacement of the refstrings, agnostic as to how many are
+        # actually in A and B. Churn of 0 is, duh, no change.
+
+        union = setA | setB
+        disjunction = setA ^ setB
+
+        if not len(union):
+            churn = 0
+        else:
+            churn = len(disjunction) / len(union)
+
+        # Growth: the fractional difference in the number of extracted
+        # refstrings from A to B, in dB. 10 is ten times as many, 3 is ~twice as
+        # many, 0 is no change, -3 is ~half as many. nB = 0 must handled
+        # specially.
+
+        if nA == 0:
+            if nB == 0:
+                n_both_empty += 1
+            else:
+                n_fixed += 1
+                n_refstrings_fixed += nB
+        elif nB == 0:
+            broken_items.add(stem)
+            n_refstrings_broken += nA
+        else:
+            n_gc += 1
+            growth_dB = 10 * math.log10(nB / nA)
+
+            if churn > 0.5:
+                i_churn = 1
+            else:
+                i_churn = 0
+
+            if growth_dB > 0.8:  # ~20% more refstrings
+                i_growth = 4
+            elif growth_dB > 0:
+                i_growth = 3
+            elif growth_dB == 0.0:
+                i_growth = 2
+            elif growth_dB < -0.8:
+                i_growth = 0
+            else:
+                i_growth = 1
+
+            gc_histo[i_growth][i_churn] += 1
+            refstring_growth_histo[i_growth] += nB - nA
+
+        # Per-item diff output
 
         diffout = list(difflib.diff_bytes(difflib.unified_diff, A_lines, B_lines, n=0))
 
@@ -482,34 +590,56 @@ def compare_refstrings(session_id, A_config, B_config, logger=default_logger):
 
         n_items_diff += 1
 
-        if A_ext == B_ext:
-            ext = A_ext
-        else:
-            ext = f"{A_ext} => {B_ext}"
+        if show_diff:
+            if A_ext == B_ext:
+                ext = A_ext
+            else:
+                ext = f"{A_ext} => {B_ext}"
 
-        yield f"~~~ {stem}({ext}): {A_desc} => {B_desc}\n"
+            yield f"~~~ {stem}({ext}): {A_desc} => {B_desc}  growth={growth_dB:+.2f}  churn={churn:.2f}\n"
 
-        for line in diffout:
-            if (
-                line.startswith(b"---")
-                or line.startswith(b"+++")
-                or line.startswith(b"@@")
-            ):
-                continue
+            for line in diffout:
+                if (
+                    line.startswith(b"---")
+                    or line.startswith(b"+++")
+                    or line.startswith(b"@@")
+                ):
+                    continue
 
-            if line.startswith(b"+"):
-                n_refstrings_plus += 1
-
-            if line.startswith(b"-"):
-                n_refstrings_minus += 1
-
-            yield line.decode("utf-8", "backslashreplace")
+                yield line.decode("utf-8", "backslashreplace")
 
     # Emit some summary statistics
 
-    yield "\n"
+    if show_diff:
+        yield "\n"
+
     yield f">>> {n_items_same} unchanged items\n"
     yield f">>> {n_items_diff} changed items\n"
+    yield f">>> {n_withdrawn} withdrawn items ignored in comparison\n"
+    yield f">>> {n_both_empty - n_withdrawn} non-withdrawn items empty in both A and B\n"
+    yield f">>> {n_fixed} items fixed in B, gaining {n_refstrings_fixed} refstrings\n"
+    yield f">>> {len(broken_items)} items broken in B, losing {n_refstrings_broken} refstrings\n"
+
+    if broken_items:
+        yield "\n"
+        for s in sorted(broken_items):
+            yield f"    {s}\n"
+        yield "\n"
+
+    yield f">>> {n_gc} items non-empty in both A and B:\n"
+    yield "\n"
+    yield "                   low   high  |      delta\n"
+    yield "                 churn  churn  | refstrings\n"
+    growth_labels = ["lose many", "lose some", "same", "gain some", "gain many"]
+
+    for i_growth in range(5):
+        nclo, nchi = gc_histo[i_growth]
+        nd = refstring_growth_histo[i_growth]
+        yield f"    {growth_labels[i_growth]:>9s}:   {nclo:5d}  {nchi:5d}  | {nd:10d}\n"
+
+    yield "\n"
+    yield f">>> {n_refstrings_A} refstrings in A\n"
+    yield f">>> {n_refstrings_B} refstrings in B\n"
     yield f">>> {n_refstrings_plus} new refstring lines\n"
     yield f">>> {n_refstrings_minus} removed refstring lines\n"
     yield f">>> {n_refstrings_plus - n_refstrings_minus} net delta refstring lines\n"
@@ -774,6 +904,10 @@ def compare_resolved(
             info.B_ext = B_ext
             info.n_strings_A = len(A_refstrings)
             info.n_strings_B = len(B_refstrings)
+            info.n_tried_A = len(A_uniques[stem])
+            info.n_tried_B = len(B_uniques[stem])
+            info.n_succeeded_A = 0
+            info.n_succeeded_B = 0
 
             yield stem, info, B_refstrings ^ A_refstrings
 
@@ -814,6 +948,7 @@ def compare_resolved(
 
             if ri.score > SUCCESSFUL_RESOLUTION_THRESHOLD:
                 A_bibcodes.add(ri.bibcode)
+                info.n_succeeded_A += 1
 
         for rs in B_uniques[stem]:
             ri = resolved[rs]
@@ -821,9 +956,11 @@ def compare_resolved(
 
             if ri.score > SUCCESSFUL_RESOLUTION_THRESHOLD:
                 B_bibcodes.add(ri.bibcode)
+                info.n_succeeded_B += 1
 
         info.n_lost = len(A_bibcodes - B_bibcodes)
         info.n_gained = len(B_bibcodes - A_bibcodes)
+        info.A_score = A_score
         info.score_delta = B_score - A_score
 
     return results

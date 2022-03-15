@@ -68,6 +68,15 @@ with resolver_cache.ResolverCache(db_path) as rcache:
         max_resolves=settings.max_resolves,
     )
 
+    n_tried_A = 0
+    n_tried_B = 0
+    n_succeeded_A = 0
+    n_succeeded_B = 0
+    n_strings_A = 0
+    n_strings_B = 0
+    subsample_A_score = 0
+    subsample_delta = 0
+
     print(
         "{:20}  {:12}  {:>4}  {:>8}  {:>6}  {:>6}  {:>6}".format(
             "ITEM", "EXT-A/B", "NR_A", "NR_(B-A)", "NLOST", "NGAIN", "DSCORE"
@@ -81,12 +90,42 @@ with resolver_cache.ResolverCache(db_path) as rcache:
         print(
             f"{stem:20}  {ext:12}  {info.n_strings_A:4d}  {info.n_strings_B - info.n_strings_A:+8d}  {info.n_lost:6d}  {info.n_gained:6d}  {info.score_delta:+6.1f}"
         )
+        n_tried_A += info.n_tried_A
+        n_tried_B += info.n_tried_B
+        n_succeeded_A += info.n_succeeded_A
+        n_succeeded_B += info.n_succeeded_B
+        n_strings_A += info.n_strings_A
+        n_strings_B += info.n_strings_B
+        subsample_A_score += info.A_score
+        subsample_delta += info.score_delta
+
+    # We'll assume that the reference resolution rate for the changed refstrings
+    # is not systematically different than that for unchanged refstrings.
+
+    rA = n_succeeded_A / n_tried_A
+    rB = n_succeeded_B / n_tried_B
 
     print()
-    tot = 0
+    print(f"N compared items: {len(cmp)}")
+    print(f"N refstrings in common: {n_strings_A - n_tried_A}")
 
-    for info in cmp.values():
-        tot += info.score_delta
+    print()
+    print(f"Total number of refstrings in A sample: {n_strings_A}")
+    print(f"    Size of subsample sent to resolver: {n_tried_A}")
+    print(f"         Number that actually resolved: {n_succeeded_A} (rate: {rA:.2f})")
+    print()
+    print(f"Total number of refstrings in B sample: {n_strings_B}")
+    print(f"    Size of subsample sent to resolver: {n_tried_B}")
+    print(f"         Number that actually resolved: {n_succeeded_B} (rate: {rB:.2f})")
 
-    print("N comparisons:", len(cmp))
-    print(f"Total delta: {tot:+.1f}")
+    sample_A_score_est = subsample_A_score * n_strings_A / n_tried_A
+    print()
+    print(f"Total score delta: {subsample_delta:+.1f}")
+    print(
+        f"Total A subsample score: {subsample_A_score:+.1f} (fractional improvement: {subsample_delta / subsample_A_score:+.3f})"
+    )
+    print(
+        f"Estimated A sample score: {sample_A_score_est:+.1f} (fractional improvement: {subsample_delta / sample_A_score_est:+.3f})"
+    )
+    print(f"Estimated A bibcodes: {n_strings_A * rA:.0f}")
+    print(f"Estimated B bibcodes: {n_strings_B * rB:.0f}")
