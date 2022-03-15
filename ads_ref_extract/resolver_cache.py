@@ -89,7 +89,7 @@ def _resolve_references(refstrings, api_token, logger):
 
             if response.status_code in (502, 504):
                 logger.warn(
-                    f"retrying resolver query after error {response.status_code}"
+                    f"retrying resolver query after error {response.status_code}: {response.content!r}"
                 )
                 continue
 
