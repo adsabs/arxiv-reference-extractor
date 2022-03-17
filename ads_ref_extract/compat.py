@@ -606,8 +606,9 @@ The fulltext filenames typically are in one of these forms:
                 self.item_give_up("missing-pdf")
                 return None
 
+            tr_path.parent.mkdir(parents=True, exist_ok=True)
+
             if self.pdf_backend == "perl":
-                tr_path.parent.mkdir(parents=True, exist_ok=True)
                 argv = [str(self.pdf_helper), str(pdf_path), str(tr_path), bibcode]
 
                 try:
@@ -620,6 +621,10 @@ The fulltext filenames typically are in one of these forms:
                         argv=argv,
                         e=e,
                     )
+            elif self.pdf_backend == "grobid":
+                from .grobid import extract_references
+
+                extract_references(self, pdf_path, tr_path, bibcode)
             else:
                 # This should be handled much sooner!
                 self.item_warn("unhandled PDF backend name", backend=self.pdf_backend)
