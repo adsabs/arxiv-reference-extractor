@@ -10,7 +10,7 @@ import logging
 import math
 from pathlib import Path
 import subprocess
-from typing import Optional, Set
+from typing import List, Optional, Set
 
 from .config import Config
 from .resolver_cache import ResolverCache
@@ -672,6 +672,9 @@ class ClassicSessionReprocessor(object):
     force = False
     "Whether the extractor should be run in --force mode"
 
+    extra_args: Optional[List[str]] = None
+    "Extra CLI arguments to pass to the processing program"
+
     def __init__(self, config=None, image_name=None, logs_out_base=None):
         if config is not None:
             self.config = config
@@ -761,6 +764,9 @@ class ClassicSessionReprocessor(object):
 
         if self.force:
             argv += ["--force"]
+
+        if self.extra_args:
+            argv += self.extra_args
 
         # Ready to go!
 

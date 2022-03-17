@@ -72,6 +72,10 @@ tag named "prod" must exist; its associated logs will be used as the
 source-of-truth about which items should be processed (as well as their
 bibcodes).
 
+If set, the environment variable `$REPRO_ARGS` can be used to pass extra
+command-line arguments to the processing tool, which is run inside a Docker
+container.
+
 On @pkgw's laptop, reprocessing averages about 2 seconds per item, which means
 that reprocessing usually takes about 45 minutes for a typical session.
 
