@@ -70,6 +70,9 @@ class CompatExtractor(object):
     no_pdf = False
     "Do not attempt to process PDF files if original source was LaTeX (implies `no_harvest`)."
 
+    no_tex = False
+    "Do not attempt LaTeX processing."
+
     skip_refs = False
     "If true, don't actually write out the new ('target') reference file."
 
@@ -133,6 +136,11 @@ The fulltext filenames typically are in one of these forms:
             "--no-pdf",
             action="store_true",
             help="Do not attempt to process PDF files if original source was LaTeX (implies --no-harvest)",
+        )
+        parser.add_argument(
+            "--no-tex",
+            action="store_true",
+            help="Do not attempt LaTeX processing",
         )
         parser.add_argument(
             "--skip-refs",
@@ -253,6 +261,7 @@ The fulltext filenames typically are in one of these forms:
         inst.force = settings.force
         inst.no_harvest = settings.no_harvest or settings.no_pdf
         inst.no_pdf = settings.no_pdf
+        inst.no_tex = settings.no_tex
         inst.skip_refs = settings.skip_refs
         inst.debug_tex = settings.debug_tex
         inst.debug_source_files_dir = settings.debug_sourcefiles
@@ -531,7 +540,7 @@ The fulltext filenames typically are in one of these forms:
 
         wrote_refs = False
 
-        if not is_pdf:
+        if not is_pdf and not self.no_tex:
             if self.debug_source_files_dir is None:
                 workdir = None
             else:
