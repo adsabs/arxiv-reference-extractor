@@ -93,7 +93,12 @@ def _get_refstrings(result: str) -> Generator[str, None, None]:
 
     for note in elem.iter("{http://www.tei-c.org/ns/1.0}note"):
         if note.attrib.get("type") == "raw_reference":
-            yield note.text
+            text = note.text
+
+            # Hyphenation normalization helps:
+            text = text.replace("- ", "")
+
+            yield text
 
 
 # Diagnostic CLI
