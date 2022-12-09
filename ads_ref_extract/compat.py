@@ -70,6 +70,9 @@ class CompatExtractor(object):
     no_pdf = False
     "Do not attempt to process PDF files if original source was LaTeX (implies `no_harvest`)."
 
+    no_tex = False
+    "Do not attempt LaTeX processing."
+
     skip_refs = False
     "If true, don't actually write out the new ('target') reference file."
 
@@ -81,6 +84,9 @@ class CompatExtractor(object):
 
     debug_pdftotext = False
     "If true, print pdftotext output."
+
+    pdf_backend: str = "perl"
+    "How to extract refstrings from PDFs."
 
     pdf_helper: Path = None
 
@@ -120,6 +126,12 @@ The fulltext filenames typically are in one of these forms:
             help="Specify alternative directory for TeX binaries (note: semantics changed from extractrefs.pl)",
         )
         parser.add_argument(
+            "--pdf-backend",
+            default="perl",
+            metavar="NAME",
+            help="Specify the backend for getting refstrings from PDFs",
+        )
+        parser.add_argument(
             "--force",
             action="store_true",
             help="Force recreation of references even if target file exists and is more recent than source",
@@ -133,6 +145,11 @@ The fulltext filenames typically are in one of these forms:
             "--no-pdf",
             action="store_true",
             help="Do not attempt to process PDF files if original source was LaTeX (implies --no-harvest)",
+        )
+        parser.add_argument(
+            "--no-tex",
+            action="store_true",
+            help="Do not attempt LaTeX processing",
         )
         parser.add_argument(
             "--skip-refs",
@@ -253,14 +270,17 @@ The fulltext filenames typically are in one of these forms:
         inst.force = settings.force
         inst.no_harvest = settings.no_harvest or settings.no_pdf
         inst.no_pdf = settings.no_pdf
+        inst.no_tex = settings.no_tex
         inst.skip_refs = settings.skip_refs
         inst.debug_tex = settings.debug_tex
         inst.debug_source_files_dir = settings.debug_sourcefiles
         inst.debug_pdftotext = settings.debug_pdftotext
         inst.input_stream = input_stream
         inst.log_stream = log_stream
+        inst.pdf_backend = settings.pdf_backend
 
-        # Not currently configurable, but it could be.
+        # Not currently configurable, but it could be. Also, only used
+        # when pdf_backend is "perl".
         inst.pdf_helper = (
             Path(__file__).parent.parent / "classic" / "extract_one_pdf.pl"
         )
@@ -531,7 +551,7 @@ The fulltext filenames typically are in one of these forms:
 
         wrote_refs = False
 
-        if not is_pdf:
+        if not is_pdf and not self.no_tex:
             if self.debug_source_files_dir is None:
                 workdir = None
             else:
@@ -571,8 +591,9 @@ The fulltext filenames typically are in one of these forms:
             # For now (?), farm out to the classic Perl implementation to try to
             # extract refs from the PDF.
             self.item_info(
-                "attempting Perl-based PDF reference extraction",
+                "attempting PDF-based reference extraction",
                 is_pdf=is_pdf,
+                backend=self.pdf_backend,
             )
 
             if is_pdf:
@@ -586,21 +607,33 @@ The fulltext filenames typically are in one of these forms:
                 return None
 
             tr_path.parent.mkdir(parents=True, exist_ok=True)
-            argv = [str(self.pdf_helper), str(pdf_path), str(tr_path), bibcode]
 
-            try:
-                self.item_exec(argv)
-            except subprocess.CalledProcessError as e:
-                self.item_warn("PDF extraction failed", argv=argv, e=e)
-            except Exception as e:
-                self.item_warn(
-                    "unexpected failure when trying PDF extraction", argv=argv, e=e
-                )
+            if self.pdf_backend == "perl":
+                argv = [str(self.pdf_helper), str(pdf_path), str(tr_path), bibcode]
+
+                try:
+                    self.item_exec(argv)
+                except subprocess.CalledProcessError as e:
+                    self.item_warn("Perl-based PDF extraction failed", argv=argv, e=e)
+                except Exception as e:
+                    self.item_warn(
+                        "unexpected failure when trying Perl-based PDF extraction",
+                        argv=argv,
+                        e=e,
+                    )
+            elif self.pdf_backend == "grobid":
+                from .grobid import extract_references
+
+                extract_references(self, pdf_path, tr_path, bibcode)
+            else:
+                # This should be handled much sooner!
+                self.item_warn("unhandled PDF backend name", backend=self.pdf_backend)
+                return None
 
             if tr_path.exists():
-                self.item_info("Perl-based extraction seems to have worked")
+                self.item_info("PDF-based extraction seems to have worked")
             else:
-                self.item_info("Perl-based extraction didn't create its output")
+                self.item_info("PDF-based extraction didn't create its output")
                 return None
 
         return tr_path

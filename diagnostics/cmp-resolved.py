@@ -78,7 +78,7 @@ with resolver_cache.ResolverCache(db_path) as rcache:
     subsample_delta = 0
 
     print(
-        "{:20}  {:12}  {:>4}  {:>8}  {:>6}  {:>6}  {:>6}".format(
+        "{:40}  {:12}  {:>4}  {:>8}  {:>6}  {:>6}  {:>6}".format(
             "ITEM", "EXT-A/B", "NR_A", "NR_(B-A)", "NLOST", "NGAIN", "DSCORE"
         )
     )
@@ -88,7 +88,7 @@ with resolver_cache.ResolverCache(db_path) as rcache:
     ):
         ext = f"{info.A_ext}/{info.B_ext}"
         print(
-            f"{stem:20}  {ext:12}  {info.n_strings_A:4d}  {info.n_strings_B - info.n_strings_A:+8d}  {info.n_lost:6d}  {info.n_gained:6d}  {info.score_delta:+6.1f}"
+            f"{stem:40}  {ext:12}  {info.n_strings_A:4d}  {info.n_strings_B - info.n_strings_A:+8d}  {info.n_lost:6d}  {info.n_gained:6d}  {info.score_delta:+6.1f}"
         )
         n_tried_A += info.n_tried_A
         n_tried_B += info.n_tried_B
@@ -122,10 +122,10 @@ with resolver_cache.ResolverCache(db_path) as rcache:
     print()
     print(f"Total score delta: {subsample_delta:+.1f}")
     print(
-        f"Total A subsample score: {subsample_A_score:+.1f} (fractional improvement: {subsample_delta / subsample_A_score:+.3f})"
+        f"Total A subsample score: {subsample_A_score:+.1f} (fractional improvement in B: {subsample_delta / subsample_A_score:+.3f})"
     )
     print(
-        f"Estimated A sample score: {sample_A_score_est:+.1f} (fractional improvement: {subsample_delta / sample_A_score_est:+.3f})"
+        f"Estimated A sample score: {sample_A_score_est:+.1f} (fractional improvement in B: {subsample_delta / sample_A_score_est:+.3f})"
     )
     print(f"Estimated A bibcodes: {n_strings_A * rA:.0f}")
     print(f"Estimated B bibcodes: {n_strings_B * rB:.0f}")

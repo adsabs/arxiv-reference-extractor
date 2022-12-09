@@ -836,29 +836,13 @@ class TexSources(object):
 # CLI helper support
 
 
-def _get_quick_logger():
-    import logging
-
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s %(levelname)s\t%(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
-
-    logger = logging.getLogger("tex-cli")
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
-    return logger
-
-
 def _do_one(settings, until):
     from .config import Config
+    from .utils import get_quick_logger
 
     session = CompatExtractor()
     session.config = Config.new_defaults()
-    session.logger = _get_quick_logger()
+    session.logger = get_quick_logger("tex-cli")
     session.log_stream = sys.stderr
     session.output_stream = sys.stdout
 

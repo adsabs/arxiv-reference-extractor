@@ -10,7 +10,7 @@
 from abc import ABC, abstractmethod
 import unicodedata
 
-__all__ = ["refstring_normalizer"]
+__all__ = ["refstring_normalizer", "to_ascii"]
 
 #: Control characters.
 CONTROLS = {
@@ -196,7 +196,7 @@ class Normalizer(BaseNormalizer):
 
         # Normalize unusual whitespace not caught by unicodedata
         # text = text.replace('\u000b', ' ').replace('\u000c', ' ').replace(u'\u0085', ' ')
-        text = text.replace("\u000b", " ").replace(u"\u0085", " ")
+        text = text.replace("\u000b", " ").replace("\u0085", " ")
         text = (
             text.replace("\u2028", "\n")
             .replace("\u2029", "\n")
@@ -257,3 +257,7 @@ refstring_normalizer = Normalizer(
     slashes=True,
     tildes=True,
 )
+
+
+def to_ascii(text: str) -> str:
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")

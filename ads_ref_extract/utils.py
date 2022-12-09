@@ -2,7 +2,31 @@
 Miscellaneous utilities that don't fit anywhere else.
 """
 
-__all__ = ["split_item_path"]
+__all__ = ["get_quick_logger", "split_item_path"]
+
+import logging
+import sys
+
+
+def get_quick_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
+    """
+    Get a basic logger for CLI utilities.
+
+    This prints to stderr, since the standard usage of this program needs to
+    keep its stdout pristine.
+    """
+
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)s\t%(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
+    logger = logging.getLogger(name)
+    logger.addHandler(handler)
+    logger.setLevel(level)
+    return logger
 
 
 def split_item_path(item_path):

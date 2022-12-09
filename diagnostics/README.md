@@ -72,6 +72,10 @@ tag named "prod" must exist; its associated logs will be used as the
 source-of-truth about which items should be processed (as well as their
 bibcodes).
 
+If set, the environment variable `$REPRO_ARGS` can be used to pass extra
+command-line arguments to the processing tool, which is run inside a Docker
+container.
+
 On @pkgw's laptop, reprocessing averages about 2 seconds per item, which means
 that reprocessing usually takes about 45 minutes for a typical session.
 
@@ -153,3 +157,22 @@ understanding if/how a particular refstring is resolving successfully or not.
 
 If any API calls need to be made, the environment variable `$ADS_DEV_KEY` must
 be set as above.
+
+### ./make-training-set.py [-m MAX-RESOLVES] {TAG}
+
+Identify Arxiv submissions to go into a training set for ADS' reference
+extraction tools.
+
+In particular, this script prints out the identifiers of items in the specified
+tag where every single refstring successfully resolves into a bibcode. The
+assumption is that if this is the case, the (presumably TeX-based) extraction
+went well and the associated information should make for a good test case for
+PDF-based extraction. This filter will obviously yield a very biased subset of
+the inputs, but that's not necessarily a problem. The search is done over every
+item in every session, so that tag's results should probably include only a
+relatively small number of items. In the initial processing, about 2% of Arxiv
+items meet the criterion.
+
+This will likely need to invoke the reference resolver because the default
+analysis only looks at *changed* refstrings between two samples, while this
+analysis needs to resolve everything.

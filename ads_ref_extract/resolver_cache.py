@@ -38,7 +38,7 @@ def _get_default_api_token():
     )
 
 
-def _resolve_references(refstrings, api_token, logger):
+def _resolve_references(refstrings, api_token, logger, level):
     """
     Use the reference resolver service to resolve references. Production has
     better approaches, but we use this for testing reprocessing runs.
@@ -114,8 +114,9 @@ def _resolve_references(refstrings, api_token, logger):
         tnow = time.time()
         if tnow - tlast > 180:
             tp = n_resolved / (tnow - t0)
-            logger.warn(
-                f"reference resolution status: {n_resolved} resolved, throughput {tp:.2f} resolutions/second"
+            logger.log(
+                level,
+                f"reference resolution status: {n_resolved} resolved, throughput {tp:.2f} resolutions/second",
             )
             tlast = tnow
 
@@ -126,8 +127,9 @@ def _resolve_references(refstrings, api_token, logger):
 
     tnow = time.time()
     tp = n_resolved / (tnow - t0)
-    logger.warn(
-        f"finished resolving: {n_resolved} resolved, throughput {tp:.2f} resolutions/second"
+    logger.log(
+        level,
+        f"finished resolving: {n_resolved} resolved, throughput {tp:.2f} resolutions/second",
     )
 
 
@@ -184,7 +186,14 @@ class ResolverCache(object):
 
         return n
 
-    def resolve(self, refstrings, logger=default_logger, api_token=None, no_rpc=False):
+    def resolve(
+        self,
+        refstrings,
+        logger=default_logger,
+        level=logging.WARN,
+        api_token=None,
+        no_rpc=False,
+    ):
         """
         Resolve a batch of reference strings.
 
@@ -210,7 +219,7 @@ class ResolverCache(object):
         if not todo:
             pass
         elif no_rpc:
-            logger.warn(f"NOT resolving {len(todo)} reference strings")
+            logger.log(level, f"NOT resolving {len(todo)} reference strings")
 
             for rs in todo:
                 resolved[rs] = ResolvedRef("xxxxxxxxxxxxxxxxxxx", 0.0)
@@ -218,9 +227,9 @@ class ResolverCache(object):
             if api_token is None:
                 api_token = _get_default_api_token()
 
-            logger.warn(f"resolving {len(todo)} reference strings")
+            logger.log(level, f"resolving {len(todo)} reference strings")
 
-            for info in _resolve_references(todo, api_token, logger):
+            for info in _resolve_references(todo, api_token, logger, level):
                 refstring = info["refstring"]
                 resolved[refstring] = self._save(refstring, info)
 

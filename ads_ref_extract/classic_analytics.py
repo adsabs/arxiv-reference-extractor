@@ -10,7 +10,7 @@ import logging
 import math
 from pathlib import Path
 import subprocess
-from typing import Optional, Set
+from typing import List, Optional, Set
 
 from .config import Config
 from .resolver_cache import ResolverCache
@@ -672,6 +672,9 @@ class ClassicSessionReprocessor(object):
     force = False
     "Whether the extractor should be run in --force mode"
 
+    extra_args: Optional[List[str]] = None
+    "Extra CLI arguments to pass to the processing program"
+
     def __init__(self, config=None, image_name=None, logs_out_base=None):
         if config is not None:
             self.config = config
@@ -729,7 +732,7 @@ class ClassicSessionReprocessor(object):
             "--name",
             f"arxiv_refextract_repro_{session_id}",
             "-v",
-            f"{self.config.fulltext_base}:/proj/ads/abstracts/sources/ArXiv/fulltext:ro,Z",
+            f"{self.config.fulltext_base}:/fulltext:ro,Z",
             "-v",
             f"{log_dir}:/input_logs/{session_id}:ro,Z",
         ]
@@ -750,6 +753,8 @@ class ClassicSessionReprocessor(object):
             f"ADS_ARXIVREFS_LOGROOT=/{spfx}/logs",
             "-e",
             f"ADS_ARXIVREFS_REFOUT=/{spfx}/results/testing/references/sources",
+            "-e",
+            "ADS_ARXIVREFS_FULLTEXT=/fulltext",
             self.image_name,
             "/app/run.py",
             "--pipeline",
@@ -761,6 +766,9 @@ class ClassicSessionReprocessor(object):
 
         if self.force:
             argv += ["--force"]
+
+        if self.extra_args:
+            argv += self.extra_args
 
         # Ready to go!
 
