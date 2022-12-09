@@ -1,17 +1,22 @@
 """
-PDF reference extraction using GROBID.
+PDF reference extraction using Grobid.
 
 Note that this module depends on the ``grobid_client_python`` package
 (https://github.com/kermitt2/grobid_client_python), which is not on PyPI. There
 are several other Grobid client packages around, some with the same module name,
 but they don't seem able to meet our needs.
+
+Grobid extraction is done by communicating with a server. The environment
+variables ``ADS_ARXIVREFS_GROBID_HOST`` and ``ADS_ARXIVREFS_GROBID_PORT``
+configure how the server is contacted. The default is port 8070 on localhost,
+which is the standard Grobid setup.
 """
 
 __all__ = ["extract_references"]
 
 import argparse
 from grobid_client.grobid_client import GrobidClient
-from logging import Logger
+import os
 from pathlib import Path
 from typing import Generator, Tuple
 from xml.etree import ElementTree as etree
@@ -49,7 +54,7 @@ def extract_references(
     successful extraction. If the return value is a negative integer, extraction
     failed.
     """
-    http_status, result = _call_grobid(pdf_path)
+    http_status, result = _call_grobid(pdf_path, session.config)
 
     if http_status != 200:
         session.item_give_up("GROBID returned an error code", code=http_status)
@@ -72,8 +77,12 @@ def extract_references(
     return n
 
 
-def _call_grobid(pdf_path: Path) -> Tuple[int, str]:
-    client = GrobidClient(check_server=False)
+def _call_grobid(pdf_path: Path, config: Config) -> Tuple[int, str]:
+    client = GrobidClient(
+        check_server=False,
+        grobid_server=config.grobid_host,
+        grobid_port=config.grobid_port,
+    )
     _pdf_path, http_status, result = client.process_pdf(
         "processReferences",
         str(pdf_path),
@@ -105,16 +114,13 @@ def _get_refstrings(result: str) -> Generator[str, None, None]:
 
 
 def _do_oneoff(settings):
-    from .utils import get_quick_logger
-
     config = Config.new_defaults()
-    logger = get_quick_logger("grobid-cli")
 
     pdf_path = config.fulltext_base / f"{settings.item}.pdf"
     if not pdf_path.exists():
         raise Exception(f"no such file `{pdf_path}`")
 
-    http_status, result = _call_grobid(pdf_path)
+    http_status, result = _call_grobid(pdf_path, config)
 
     if http_status != 200:
         raise Exception(f"GROBID returned status {http_status}, not 200 as expected")
