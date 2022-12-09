@@ -732,7 +732,7 @@ class ClassicSessionReprocessor(object):
             "--name",
             f"arxiv_refextract_repro_{session_id}",
             "-v",
-            f"{self.config.fulltext_base}:/proj/ads/abstracts/sources/ArXiv/fulltext:ro,Z",
+            f"{self.config.fulltext_base}:/fulltext:ro,Z",
             "-v",
             f"{log_dir}:/input_logs/{session_id}:ro,Z",
         ]
@@ -753,6 +753,8 @@ class ClassicSessionReprocessor(object):
             f"ADS_ARXIVREFS_LOGROOT=/{spfx}/logs",
             "-e",
             f"ADS_ARXIVREFS_REFOUT=/{spfx}/results/testing/references/sources",
+            "-e",
+            "ADS_ARXIVREFS_FULLTEXT=/fulltext",
             self.image_name,
             "/app/run.py",
             "--pipeline",
