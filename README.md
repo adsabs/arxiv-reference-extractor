@@ -35,10 +35,32 @@ In the "non-pipeline" mode, which is compatible with the historical
   script.
 - Additional logging information is written to stderr.
 
-To test locally, we recommend using the framework found in the `diagnostics/`
-subdirectory. Some modest configuration is required. You also need to have
-copies of ArXiv data organized according to ADS' system in order for the
-pipeline to be able to do anything useful.
+
+## Testing and diagnostics
+
+To test locally, we recommend using the Docker-based framework found in the
+`diagnostics/` subdirectory. Some modest configuration is required. You also
+need to have copies of ArXiv data organized according to ADS' system in order
+for the pipeline to be able to do anything useful.
+
+When testing in the ADS backoffice environment, you can't actually launch
+reprocessing commands since the diagnostics framework isn't smart enough to
+handle that inside the Docker environment. But you can use the environment
+variables listed below to run in a testing mode; for instance,
+
+```
+$ ADS_ARXIVREFS_REFOUT=/app/results/mytest/references \
+  ADS_ARXIVREFS_LOGROOT=/app/results/mytest/logs \
+  python3 /app/run.py \
+    --pdf-backend=mynewbackend \
+    --pipeline /proj/ads/abstracts/sources/ArXiv/log/$DATE/fulltextharvest.out
+```
+
+Then you can use the analysis scripts provided in the diagnostics framework, e.g.:
+
+```
+$ ./diagnostics/summarize.py mytest $DATE
+```
 
 
 ## Configuration
