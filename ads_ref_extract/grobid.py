@@ -7,16 +7,14 @@ are several other Grobid client packages around, some with the same module name,
 but they don't seem able to meet our needs.
 
 Grobid extraction is done by communicating with a server. The environment
-variables ``ADS_ARXIVREFS_GROBID_HOST`` and ``ADS_ARXIVREFS_GROBID_PORT``
-configure how the server is contacted. The default is port 8070 on localhost,
-which is the standard Grobid setup.
+variable ``ADS_ARXIVREFS_GROBID_SERVER`` should give a base URL configuring how
+the server is contacted. The default value is ``"http://localhost:8070"``.
 """
 
 __all__ = ["extract_references"]
 
 import argparse
 from grobid_client.grobid_client import GrobidClient
-import os
 from pathlib import Path
 from typing import Generator, Tuple
 from xml.etree import ElementTree as etree
@@ -57,11 +55,13 @@ def extract_references(
     http_status, result = _call_grobid(pdf_path, session.config)
 
     if http_status != 200:
-        session.item_give_up("GROBID returned an error code", code=http_status)
+        session.item_warn("GROBID returned an error code", code=http_status)
+        session.item_give_up("grobid-error")
         return -1
 
     if not result:
-        session.item_give_up("GROBID returned an empty result", code=http_status)
+        session.item_warn("GROBID returned an empty result", code=http_status)
+        session.item_give_up("grobid-error")
         return -1
 
     n = 0
@@ -80,8 +80,7 @@ def extract_references(
 def _call_grobid(pdf_path: Path, config: Config) -> Tuple[int, str]:
     client = GrobidClient(
         check_server=False,
-        grobid_server=config.grobid_host,
-        grobid_port=config.grobid_port,
+        grobid_server=config.grobid_server,
     )
     _pdf_path, http_status, result = client.process_pdf(
         "processReferences",

@@ -5,6 +5,14 @@ from the "classic" pipeline deployed in `/proj/ads/abstracts/sources/ArXiV/`.
 The code is in the `ads_ref_extract/` Python package, with diagnostic tooling in
 `diagnostics/`. See `diagnostics/README.md` for a description of those tools.
 
+References can be extracted either from TeX source, or from PDFs. TeX extraction
+is preferred because it generally gives better results. However, some Arxiv
+postings are PDF-only, and others we cannot successfully process as TeX. PDF-based
+processing can run either a "classic" Perl-based backend, or call out to an
+external [GROBID] service.
+
+[GROBID]: https://grobid.readthedocs.io/
+
 
 ## Launching the pipeline
 
@@ -35,10 +43,36 @@ In the "non-pipeline" mode, which is compatible with the historical
   script.
 - Additional logging information is written to stderr.
 
-To test locally, we recommend using the framework found in the `diagnostics/`
-subdirectory. Some modest configuration is required. You also need to have
-copies of ArXiv data organized according to ADS' system in order for the
-pipeline to be able to do anything useful.
+In both cases, by default the GROBID backend is used if the environment variable
+`$ADS_ARXIVREFS_GROBID_SERVER` is set. Otherwise, the Perl backend is used. This
+can be overridden with the `--pdf-backend` command-line option.
+
+
+## Testing and diagnostics
+
+To test locally, we recommend using the Docker-based framework found in the
+`diagnostics/` subdirectory. Some modest configuration is required. You also
+need to have copies of ArXiv data organized according to ADS' system in order
+for the pipeline to be able to do anything useful.
+
+When testing in the ADS backoffice environment, you can't actually launch
+reprocessing commands since the diagnostics framework isn't smart enough to
+handle that inside the Docker environment. But you can use the environment
+variables listed below to run in a testing mode; for instance,
+
+```
+$ ADS_ARXIVREFS_REFOUT=/app/results/mytest/references \
+  ADS_ARXIVREFS_LOGROOT=/app/results/mytest/logs \
+  python3 /app/run.py \
+    --pdf-backend=mynewbackend \
+    --pipeline /proj/ads/abstracts/sources/ArXiv/log/$DATE/fulltextharvest.out
+```
+
+Then you can use the analysis scripts provided in the diagnostics framework, e.g.:
+
+```
+$ ./diagnostics/summarize.py mytest $DATE
+```
 
 
 ## Configuration
@@ -48,10 +82,8 @@ environment variables are:
 
 - `ADS_ARXIVREFS_FULLTEXT` - the base directory for Arxiv fulltext sources.
   Defaults to `$ADS_ABSTRACTS/sources/ArXiv/fulltext`.
-- `ADS_ARXIVREFS_GROBID_HOST` - the hostname of the Grobid server, if
-  Grobid-based PDF extraction is being used. Defaults to `localhost`.
-- `ADS_ARXIVREFS_GROBID_PORT` - the port of the Grobid server, if Grobid-based
-  PDF extraction is being used. Defaults to 8070.
+- `ADS_ARXIVREFS_GROBID_SERVER` - the base URL of the Grobid server, if
+  Grobid-based PDF extraction is being used. Defaults to `http://localhost:8070`.
 - `ADS_ARXIVREFS_LOGROOT` - the base directory for log file outputs in
   `--pipeline` mode
 - `ADS_ARXIVREFS_REFOUT` - the base directory for writing the new "target

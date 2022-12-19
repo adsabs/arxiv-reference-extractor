@@ -127,7 +127,6 @@ The fulltext filenames typically are in one of these forms:
         )
         parser.add_argument(
             "--pdf-backend",
-            default="perl",
             metavar="NAME",
             help="Specify the backend for getting refstrings from PDFs",
         )
@@ -277,7 +276,13 @@ The fulltext filenames typically are in one of these forms:
         inst.debug_pdftotext = settings.debug_pdftotext
         inst.input_stream = input_stream
         inst.log_stream = log_stream
-        inst.pdf_backend = settings.pdf_backend
+
+        if settings.pdf_backend is not None:
+            inst.pdf_backend = settings.pdf_backend
+        elif "ADS_ARXIVREFS_GROBID_SERVER" in os.environ:
+            inst.pdf_backend = "grobid"
+        else:
+            inst.pdf_backend = "perl"
 
         # Not currently configurable, but it could be. Also, only used
         # when pdf_backend is "perl".
