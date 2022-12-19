@@ -48,10 +48,8 @@ environment variables are:
 
 - `ADS_ARXIVREFS_FULLTEXT` - the base directory for Arxiv fulltext sources.
   Defaults to `$ADS_ABSTRACTS/sources/ArXiv/fulltext`.
-- `ADS_ARXIVREFS_GROBID_HOST` - the hostname of the Grobid server, if
-  Grobid-based PDF extraction is being used. Defaults to `localhost`.
-- `ADS_ARXIVREFS_GROBID_PORT` - the port of the Grobid server, if Grobid-based
-  PDF extraction is being used. Defaults to 8070.
+- `ADS_ARXIVREFS_GROBID_SERVER` - the base URL of the Grobid server, if
+  Grobid-based PDF extraction is being used. Defaults to `http://localhost:8070`.
 - `ADS_ARXIVREFS_LOGROOT` - the base directory for log file outputs in
   `--pipeline` mode
 - `ADS_ARXIVREFS_REFOUT` - the base directory for writing the new "target

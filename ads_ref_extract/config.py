@@ -44,16 +44,11 @@ class Config(object):
     new processing. Defaults to ``$ADS_ABSTRACTS/sources/ArXiv/log``.
     """
 
-    grobid_host: str = "localhost"
+    grobid_server: str = "http://localhost:8070"
     """
-    The host to contact for Grobid-based PDF reference extraction, if that
-    mode is being used. Defaults to ``"localhost"``.
-    """
-
-    grobid_port: int = 8070
-    """
-    The port to use for communicating with the Grobid server, if that mode is
-    being used. Defaults to 8070.
+    The base URL of the server to contact for Grobid-based PDF reference
+    extraction, if that mode is being used. Defaults to
+    ``"http://localhost:8070"``.
     """
 
     @classmethod
@@ -86,8 +81,9 @@ class Config(object):
         # This assumes that we're running in the standard Docker container:
         inst.tex_bin_dir = Path("/src/tex/bin/x86_64-linux")
 
-        inst.grobid_host = os.environ.get("ADS_ARXIVREFS_GROBID_HOST", "localhost")
-        inst.grobid_port = int(os.environ.get("ADS_ARXIVREFS_GROBID_PORT", "8070"))
+        inst.grobid_server = os.environ.get(
+            "ADS_ARXIVREFS_GROBID_SERVER", "http://localhost:8070"
+        )
 
         return inst
 
