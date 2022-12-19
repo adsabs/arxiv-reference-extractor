@@ -5,6 +5,14 @@ from the "classic" pipeline deployed in `/proj/ads/abstracts/sources/ArXiV/`.
 The code is in the `ads_ref_extract/` Python package, with diagnostic tooling in
 `diagnostics/`. See `diagnostics/README.md` for a description of those tools.
 
+References can be extracted either from TeX source, or from PDFs. TeX extraction
+is preferred because it generally gives better results. However, some Arxiv
+postings are PDF-only, and others we cannot successfully process as TeX. PDF-based
+processing can run either a "classic" Perl-based backend, or call out to an
+external [GROBID] service.
+
+[GROBID]: https://grobid.readthedocs.io/
+
 
 ## Launching the pipeline
 
@@ -34,6 +42,10 @@ In the "non-pipeline" mode, which is compatible with the historical
 - Summary logs are written to stdout, in a format compatible with the historical
   script.
 - Additional logging information is written to stderr.
+
+In both cases, by default the GROBID backend is used if the environment variable
+`$ADS_ARXIVREFS_GROBID_SERVER` is set. Otherwise, the Perl backend is used. This
+can be overridden with the `--pdf-backend` command-line option.
 
 
 ## Testing and diagnostics
