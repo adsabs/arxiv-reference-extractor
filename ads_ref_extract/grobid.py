@@ -55,11 +55,13 @@ def extract_references(
     http_status, result = _call_grobid(pdf_path, session.config)
 
     if http_status != 200:
-        session.item_give_up("GROBID returned an error code", code=http_status)
+        session.item_warn("GROBID returned an error code", code=http_status)
+        session.item_give_up("grobid-error")
         return -1
 
     if not result:
-        session.item_give_up("GROBID returned an empty result", code=http_status)
+        session.item_warn("GROBID returned an empty result", code=http_status)
+        session.item_give_up("grobid-error")
         return -1
 
     n = 0
