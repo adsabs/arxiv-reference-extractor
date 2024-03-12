@@ -22,7 +22,7 @@ diagnostics_dir = osp.dirname(__file__)
 app_dir = osp.join(diagnostics_dir, osp.pardir)
 sys.path.append(app_dir)
 
-from ads_ref_extract import config, classic_analytics, resolver_cache
+from ads_ref_extract import settings, classic_analytics, resolver_cache
 
 # Args
 
@@ -40,17 +40,17 @@ settings = parser.parse_args()
 
 no_rpc = False  # debugging setting
 
-diagnostics_cfg = config.parse_dumb_config_file(
+diagnostics_cfg = settings.parse_dumb_settings_file(
     osp.join(diagnostics_dir, "diagnostics.cfg")
 )
 
-cfgA = config.Config.new_defaults()
+cfgA = settings.Settings.new_defaults()
 cfgA.logs_base = Path(f"{diagnostics_cfg['results_dir']}/{settings.tag_a}/logs")
 cfgA.target_refs_base = Path(
     f"{diagnostics_cfg['results_dir']}/{settings.tag_a}/references/sources"
 )
 
-cfgB = config.Config.new_defaults()
+cfgB = settings.Settings.new_defaults()
 cfgB.logs_base = Path(f"{diagnostics_cfg['results_dir']}/{settings.tag_b}/logs")
 cfgB.target_refs_base = Path(
     f"{diagnostics_cfg['results_dir']}/{settings.tag_b}/references/sources"

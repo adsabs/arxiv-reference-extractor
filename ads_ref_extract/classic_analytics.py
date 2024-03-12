@@ -12,7 +12,7 @@ from pathlib import Path
 import subprocess
 from typing import List, Optional, Set
 
-from .config import Config
+from .settings import Settings
 from .resolver_cache import ResolverCache
 from .utils import split_item_path
 
@@ -28,7 +28,7 @@ __all__ = [
 default_logger = logging.getLogger(__name__)
 
 
-def _target_refs_for_session(extractrefs_out_path, reconstruct_targets, config, logger):
+def _target_refs_for_session(extractrefs_out_path, reconstruct_targets, settings, logger):
     """
     Yields sequence of ``(item_stem, item_ext, target_refs_path)``, eg:
 
@@ -47,7 +47,7 @@ def _target_refs_for_session(extractrefs_out_path, reconstruct_targets, config, 
             if len(bits) < 2:
                 p = None
             elif reconstruct_targets:
-                p = config.target_refs_base / (item_stem + ".raw")
+                p = settings.target_refs_base / (item_stem + ".raw")
             else:
                 p = Path(bits[1])
 
@@ -151,7 +151,7 @@ class ClassicSessionAnalytics(object):
 
 def analyze_session(
     session_id,
-    config,
+    settings,
     logger=default_logger,
     reconstruct_targets=False,
     check_resolved=True,
@@ -172,7 +172,7 @@ def analyze_session(
     session that you are analyzing.
 
     """
-    log_dir = config.classic_session_log_path(session_id)
+    log_dir = settings.classic_session_log_path(session_id)
 
     # First: analyze items that were in the update
 
@@ -208,7 +208,7 @@ def analyze_session(
     # Next: analyze results of that update
 
     tref_info = _target_refs_for_session(
-        log_dir / "extractrefs.out", reconstruct_targets, config, logger
+        log_dir / "extractrefs.out", reconstruct_targets, settings, logger
     )
     raw_paths = [t[2] for t in tref_info if t[2] is not None]
     n_emitted = len(raw_paths)
@@ -316,7 +316,7 @@ def compare_outcomes(
 
     The ``session_id`` is a string session ID, something like ``"2021-11-07"``.
 
-    The ``A_config`` and ``B_config`` variables are Config objects that give
+    The ``A_config`` and ``B_config`` variables are Settings objects that give
     path information about the files produced by the two processing runs.
     """
 
@@ -428,7 +428,7 @@ def compare_refstrings(
 
     The ``session_id`` is a string session ID, something like ``"2021-11-07"``.
 
-    The ``A_config`` and ``B_config`` variables are Config objects that give
+    The ``A_config`` and ``B_config`` variables are Settings objects that give
     path information about the files produced by the two processing runs.
     """
 
@@ -657,7 +657,7 @@ class ClassicSessionReprocessor(object):
     image_name = None
     "The name of the Docker image with the classic-style reference extractor."
 
-    config = None
+    settings = None
     "The data path configuration."
 
     logs_out_base = None
@@ -675,9 +675,9 @@ class ClassicSessionReprocessor(object):
     extra_args: Optional[List[str]] = None
     "Extra CLI arguments to pass to the processing program"
 
-    def __init__(self, config=None, image_name=None, logs_out_base=None):
-        if config is not None:
-            self.config = config
+    def __init__(self, settings=None, image_name=None, logs_out_base=None):
+        if settings is not None:
+            self.settings = settings
 
         if image_name is not None:
             self.image_name = image_name
@@ -688,11 +688,11 @@ class ClassicSessionReprocessor(object):
     def _validate(self):
         if self.image_name is None:
             raise Exception("must set `image_name` before reprocessing")
-        if self.config is None:
-            raise Exception("must set `config` before reprocessing")
-        if str(self.config.target_refs_base).startswith("/proj/ads/"):
+        if self.settings is None:
+            raise Exception("must set `settings` before reprocessing")
+        if str(self.settings.target_refs_base).startswith("/proj/ads/"):
             raise Exception(
-                f"refusing to reprocess into target ref basedir `{self.config.target_refs_base}`"
+                f"refusing to reprocess into target ref basedir `{self.settings.target_refs_base}`"
             )
         if self.logs_out_base is None:
             raise Exception("must set `logs_out_base` before reprocessing")
@@ -716,14 +716,14 @@ class ClassicSessionReprocessor(object):
         self._validate()
 
         # The *input* log directory, which we use to know what items to process,
-        # is derived from `config.logs_base`. This is not the same thing as
+        # is derived from `settings.logs_base`. This is not the same thing as
         # `self.logs_out_base`, where the pipeline log files should land. We
         # have to get the session's correct log directory (which may be in a
         # year-based subdirectory) and make sure to mount it into the container
         # so that the pipeline can actually access it. The in-container filename
         # has to be in a directory whose name is `session_id` since the pipeline
         # code infers the session ID from that name.
-        log_dir = self.config.classic_session_log_path(session_id)
+        log_dir = self.settings.classic_session_log_path(session_id)
 
         argv = [
             "docker",
@@ -732,7 +732,7 @@ class ClassicSessionReprocessor(object):
             "--name",
             f"arxiv_refextract_repro_{session_id}",
             "-v",
-            f"{self.config.fulltext_base}:/fulltext:ro,Z",
+            f"{self.settings.fulltext_base}:/fulltext:ro,Z",
             "-v",
             f"{log_dir}:/input_logs/{session_id}:ro,Z",
         ]
@@ -746,7 +746,7 @@ class ClassicSessionReprocessor(object):
 
         argv += [
             "-v",
-            f"{self.config.target_refs_base}:/{spfx}/results/testing/references/sources:rw,Z",
+            f"{self.settings.target_refs_base}:/{spfx}/results/testing/references/sources:rw,Z",
             "-v",
             f"{self.logs_out_base}:/{spfx}/logs:rw,Z",
             "-e",
@@ -837,8 +837,8 @@ SUCCESSFUL_RESOLUTION_THRESHOLD = 0.5
 
 def compare_resolved(
     session_id: str,
-    A_config: Config,
-    B_config: Config,
+    A_config: Settings,
+    B_config: Settings,
     rcache: ResolverCache,
     max_resolves: Optional[int] = None,
     logger=default_logger,
@@ -976,8 +976,8 @@ def compare_resolved(
 
 def compare_item_resolutions(
     stem: str,
-    A_config: Config,
-    B_config: Config,
+    A_config: Settings,
+    B_config: Settings,
     rcache: ResolverCache,
     logger=default_logger,
 ):

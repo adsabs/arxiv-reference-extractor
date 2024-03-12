@@ -1,0 +1,4 @@
+adsputils==1.5.2
+binaryornot==0.4.4
+editdistance==0.6.2
+grobid-client-python @ git+https://github.com/kermitt2/grobid_client_python.git@bb5c0c062946d77e652d27feed94aa421a2e927c

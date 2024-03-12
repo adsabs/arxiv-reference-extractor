@@ -38,22 +38,30 @@ import subprocess
 import sys
 import time
 from typing import List, Optional, TextIO, Union
+from adsputils import setup_logging, load_config
 
-from .config import Config
+from .settings import Settings
 from .utils import split_item_path
 
 __all__ = ["entrypoint", "CompatExtractor"]
 
 
 default_logger = logging.getLogger("extractrefs")
-
+proj_home = os.path.realpath(os.path.join(os.path.dirname(__file__), '../'))
+config =  load_config(proj_home=proj_home)
+ads_logger = setup_logging(__name__, proj_home=proj_home,
+                        level=config.get('LOGGING_LEVEL', 'INFO'),
+                        attach_stdout=config.get('LOG_STDOUT', True))
 
 class CompatExtractor(object):
-    config: Config = None
-    "A Config object with path configuration information"
+    settings: Settings = None
+    "A Settings object with path configuration information"
 
     logger: logging.Logger = None
     "A logger"
+
+    ads_logger: logging.Logger = None
+    "Standard ADS logger sending logs to graylog"
 
     input_stream: TextIO = None
 
@@ -247,25 +255,26 @@ The fulltext filenames typically are in one of these forms:
         else:
             default_logger.setLevel(logging.INFO)
 
-        # Now let's do the Config ...
+        # Now let's do the Settings configuration ...
 
-        config = Config.new_defaults()
+        settings = Settings.new_defaults()
         if settings.pbase is not None:
-            config.fulltext_base = Path(settings.pbase)
+            settings.fulltext_base = Path(settings.pbase)
 
         if settings.tbase is not None:
-            config.target_refs_base = Path(settings.tbase)
+            settings.target_refs_base = Path(settings.tbase)
 
         if (
             settings.texbindir is not None
         ):  # this is `--texbase`; our semantics are different
-            config.tex_bin_dir = Path(settings.texbindir)
+            settings.tex_bin_dir = Path(settings.texbindir)
 
         # Now common options.
 
         inst = cls()
-        inst.config = config
+        inst.settings = settings
         inst.logger = default_logger
+        inst.ads_logger = ads_logger
         inst.force = settings.force
         inst.no_harvest = settings.no_harvest or settings.no_pdf
         inst.no_pdf = settings.no_pdf
@@ -318,6 +327,7 @@ The fulltext filenames typically are in one of these forms:
 
     def process(self, input_stream=None, output_stream=None):
         self.logger.info("using the new Python extractrefs")
+        self.ads_logger.info("using the new Python extractrefs")
         t0 = time.time()
         n_inputs = 0
         n_failures = 0
@@ -332,6 +342,7 @@ The fulltext filenames typically are in one of these forms:
             pieces = line.strip().split()
             if not pieces:
                 self.logger.debug("ignoring blank input line")
+                self.ads_logger.debug("ignoring blank input line")
                 continue
 
             preprint_path = pieces[0]
@@ -359,13 +370,18 @@ The fulltext filenames typically are in one of these forms:
         elapsed = time.time() - t0
 
         self.logger.info(f"processed {n_inputs} items")
+        self.ads_logger.info(f"processed {n_inputs} items")
         if n_inputs:
             rate = elapsed / n_inputs
             self.logger.info(
                 f"elapsed time {elapsed:.0f}; processing rate: {rate:.1f} seconds per item"
             )
+            self.ads_logger.info(
+                f"elapsed time {elapsed:.0f}; processing rate: {rate:.1f} seconds per item"
+            )
         if n_failures:
             self.logger.info(f"{n_failures} items could not be processed")
+            self.ads_logger.info(f"{n_failures} items could not be processed")
         return 0
 
     # Structured logging functions. These are intended to produce logging output
@@ -396,6 +412,7 @@ The fulltext filenames typically are in one of these forms:
         # Sort for stable output across invocations
         details = " ".join(f"{t[0]}={t[1]}" for t in sorted(kwargs.items()))
         self.logger.info(f"% {summary} @i {self._current_item} {details}")
+        self.ads_logger.info(f"% {summary} @i {self._current_item} {details}")
 
     def item_give_up(self, reason: str):
         """
@@ -423,6 +440,7 @@ The fulltext filenames typically are in one of these forms:
         """
         details = " ".join(f"{t[0]}={t[1]}" for t in sorted(kwargs.items()))
         self.logger.warning(f"% {summary} @w {self._current_item} {details}")
+        self.ads_logger.warning(f"% {summary} @w {self._current_item} {details}")
 
     def item_trace1(self, summary: str, **kwargs):
         """
@@ -432,6 +450,7 @@ The fulltext filenames typically are in one of these forms:
         """
         details = " ".join(f"{t[0]}={t[1]}" for t in sorted(kwargs.items()))
         self.logger.debug(f"% {summary} @t1 {self._current_item} {details}")
+        self.ads_logger.debug(f"% {summary} @t1 {self._current_item} {details}")
 
     def item_trace2(self, summary: str, **kwargs):
         """
@@ -440,6 +459,9 @@ The fulltext filenames typically are in one of these forms:
         """
         details = " ".join(f"{t[0]}={t[1]}" for t in sorted(kwargs.items()))
         self.logger.log(
+            logging.DEBUG - 1, f"% {summary} @t2 {self._current_item} {details}"
+        )
+        self.ads_logger.log(
             logging.DEBUG - 1, f"% {summary} @t2 {self._current_item} {details}"
         )
 
@@ -496,6 +518,7 @@ The fulltext filenames typically are in one of these forms:
             tr_path = None
             self.item_warn("unhandled exception", e=e, c=e.__class__.__name__)
             self.logger.warning("detailed traceback:", exc_info=sys.exc_info())
+            self.ads_logger.warning("detailed traceback:", exc_info=sys.exc_info())
             outcome = "fail"
             exception = True
             self._failure_reason = "unhandled-exception"
@@ -516,7 +539,7 @@ The fulltext filenames typically are in one of these forms:
     ) -> Optional[str]:
         # Check out the fulltext source
 
-        ft_path = self.config.fulltext_base / f"{item_stem}.{item_ext}"
+        ft_path = self.settings.fulltext_base / f"{item_stem}.{item_ext}"
 
         if not ft_path.exists():
             self.item_warn("cannot find expected fulltext", ft_path=ft_path)
@@ -534,7 +557,7 @@ The fulltext filenames typically are in one of these forms:
 
         # Check out the target refs file
 
-        tr_path = self.config.target_refs_base / f"{item_stem}.raw"
+        tr_path = self.settings.target_refs_base / f"{item_stem}.raw"
 
         if not tr_path.exists():
             self.item_trace1("need to create output target-ref file", tr_path=tr_path)
@@ -591,6 +614,7 @@ The fulltext filenames typically are in one of these forms:
             except Exception as e:
                 self.item_warn("TeX extraction raised", e=e, c=e.__class__.__name__)
                 self.logger.warning("detailed traceback:", exc_info=sys.exc_info())
+                self.ads_logger.warning("detailed traceback:", exc_info=sys.exc_info())
 
         if not wrote_refs:
             # For now (?), farm out to the classic Perl implementation to try to
@@ -604,7 +628,7 @@ The fulltext filenames typically are in one of these forms:
             if is_pdf:
                 pdf_path = ft_path
             else:
-                pdf_path = self.config.fulltext_base / f"{item_stem}.pdf"
+                pdf_path = self.settings.fulltext_base / f"{item_stem}.pdf"
 
             if not pdf_path.exists():
                 self.item_warn("cannot find expected PDF", pdf_path=pdf_path)
