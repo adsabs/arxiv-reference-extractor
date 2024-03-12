@@ -839,10 +839,17 @@ class TexSources(object):
 def _do_one(settings, until):
     from .ref_extract_paths import Filepaths
     from .utils import get_quick_logger
+    from adsputils import setup_logging, load_config
+
+    proj_home = os.path.realpath(os.path.join(os.path.dirname(__file__), '../'))
+    config =  load_config(proj_home=proj_home)
 
     session = CompatExtractor()
     session.filepaths = Filepaths.new_defaults()
     session.logger = get_quick_logger("tex-cli")
+    session.ads_logger = setup_logging(__name__, proj_home=proj_home,
+                        level=config.get('LOGGING_LEVEL', 'INFO'),
+                        attach_stdout=config.get('LOG_STDOUT', False))
     session.log_stream = sys.stderr
     session.output_stream = sys.stdout
 
@@ -852,6 +859,7 @@ def _do_one(settings, until):
         with TemporaryDirectory() as tmpdir:
             os.chdir(tmpdir)
             session.logger.info(f"CLI harness: working in tempdir `{tmpdir}`")
+            session.ads_logger.info(f"CLI harness: working in tempdir `{tmpdir}`")
             _extract_inner(session, ft_path, None, "N/A", until=until)
     else:
         os.chdir(settings.workdir)

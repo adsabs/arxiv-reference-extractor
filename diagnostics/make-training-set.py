@@ -13,7 +13,7 @@ import argparse
 import logging
 import os.path as osp
 from pathlib import Path
-import sys
+import sys, os
 
 # Make sure we can find the Python package:
 diagnostics_dir = osp.dirname(__file__)
@@ -21,8 +21,14 @@ app_dir = osp.join(diagnostics_dir, osp.pardir)
 sys.path.append(app_dir)
 
 from ads_ref_extract import ref_extract_paths, classic_analytics, resolver_cache, utils
+from adsputils import setup_logging, load_config
 
 logger = utils.get_quick_logger("make-arxiv-training-set")
+proj_home = os.path.realpath(os.path.join(os.path.dirname(__file__), '../'))
+config =  load_config(proj_home=proj_home)
+ads_logger = setup_logging(__name__, proj_home=proj_home,
+                        level=config.get('LOGGING_LEVEL', 'INFO'),
+                        attach_stdout=config.get('LOG_STDOUT', False))
 
 # Args
 
@@ -56,7 +62,7 @@ for session_id in cfg.logs_base.iterdir():
     er = cfg.classic_session_log_path(session_id) / "extractrefs.out"
 
     for stem, ext, tr_path in classic_analytics._target_refs_for_session(
-        er, True, cfg, classic_analytics.default_logger
+        er, True, cfg, classic_analytics.default_logger, classic_analytics.ads_logger
     ):
         if tr_path is not None:
             stems[stem] = tr_path
@@ -70,7 +76,7 @@ n_accepted = 0
 with resolver_cache.ResolverCache(db_path) as rcache:
     for stem, tr_path in stems.items():
         refstrings = classic_analytics._maybe_load_raw_file(
-            tr_path, classic_analytics.default_logger
+            tr_path, classic_analytics.default_logger, classic_analytics.ads_logger
         )
 
         # Once we hit the maximum number of resolves, still check
@@ -87,7 +93,7 @@ with resolver_cache.ResolverCache(db_path) as rcache:
         any_bad = False
 
         for rs, ri in rcache.resolve(
-            refstrings, logger=logger, level=logging.DEBUG - 1
+            refstrings, logger=logger, ads_logger=ads_logger, level=logging.DEBUG - 1
         ).items():
             if ri.score <= classic_analytics.SUCCESSFUL_RESOLUTION_THRESHOLD:
                 any_bad = True

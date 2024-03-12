@@ -51,7 +51,7 @@ proj_home = os.path.realpath(os.path.join(os.path.dirname(__file__), '../'))
 config =  load_config(proj_home=proj_home)
 ads_logger = setup_logging(__name__, proj_home=proj_home,
                         level=config.get('LOGGING_LEVEL', 'INFO'),
-                        attach_stdout=config.get('LOG_STDOUT', True))
+                        attach_stdout=config.get('LOG_STDOUT', False))
 
 class CompatExtractor(object):
     filepaths: Filepaths = None

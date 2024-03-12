@@ -8,6 +8,7 @@ import editdistance
 import hashlib
 import logging
 import math
+import os
 from pathlib import Path
 import subprocess
 from typing import List, Optional, Set
@@ -15,6 +16,7 @@ from typing import List, Optional, Set
 from .ref_extract_paths import Filepaths
 from .resolver_cache import ResolverCache
 from .utils import split_item_path
+from adsputils import setup_logging, load_config
 
 __all__ = [
     "ClassicSessionAnalytics",
@@ -26,9 +28,14 @@ __all__ = [
 ]
 
 default_logger = logging.getLogger(__name__)
+proj_home = os.path.realpath(os.path.join(os.path.dirname(__file__), '../'))
+config =  load_config(proj_home=proj_home)
+ads_logger = setup_logging(__name__, proj_home=proj_home,
+                        level=config.get('LOGGING_LEVEL', 'INFO'),
+                        attach_stdout=config.get('LOG_STDOUT', False))
 
 
-def _target_refs_for_session(extractrefs_out_path, reconstruct_targets, filepaths, logger):
+def _target_refs_for_session(extractrefs_out_path, reconstruct_targets, filepaths, logger, ads_logger):
     """
     Yields sequence of ``(item_stem, item_ext, target_refs_path)``, eg:
 
@@ -40,6 +47,7 @@ def _target_refs_for_session(extractrefs_out_path, reconstruct_targets, filepath
             bits = line.strip().split()
             if not bits:
                 logger.warn(f"unexpected empty line in `{extractrefs_out_path}`")
+                ads_logger.warn(f"unexpected empty line in `{extractrefs_out_path}`")
                 continue
 
             item_stem, item_ext = split_item_path(bits[0])
@@ -153,6 +161,7 @@ def analyze_session(
     session_id,
     filepaths,
     logger=default_logger,
+    ads_logger=ads_logger,
     reconstruct_targets=False,
     check_resolved=True,
 ):
@@ -188,6 +197,7 @@ def analyze_session(
             bits = line.strip().split()
             if not bits:
                 logger.warn(f"unexpected empty line in `{fth_path}`")
+                ads_logger.warn(f"unexpected empty line in `{fth_path}`")
                 continue
 
             n_items += 1
@@ -201,6 +211,9 @@ def analyze_session(
                 logger.warn(
                     f"unexpected Arxiv item source type `{item_ext}` in `{fth_path}`"
                 )
+                ads_logger.warn(
+                    f"unexpected Arxiv item source type `{item_ext}` in `{fth_path}`"
+                )
 
             if len(bits) > 3 and bits[3] == short_sid:
                 n_new += 1
@@ -208,7 +221,7 @@ def analyze_session(
     # Next: analyze results of that update
 
     tref_info = _target_refs_for_session(
-        log_dir / "extractrefs.out", reconstruct_targets, filepaths, logger
+        log_dir / "extractrefs.out", reconstruct_targets, filepaths, logger, ads_logger
     )
     raw_paths = [t[2] for t in tref_info if t[2] is not None]
     n_emitted = len(raw_paths)
@@ -247,9 +260,15 @@ def analyze_session(
             logger.warn(
                 f"unexpected missing ref target file `{raw_path}` for Arxiv session `{session_id}`"
             )
+            ads_logger.warn(
+                f"unexpected missing ref target file `{raw_path}` for Arxiv session `{session_id}`"
+            )
             continue
         except Exception as e:
             logger.warn(
+                f"exception parsing ref target file `{raw_path}` for Arxiv session `{session_id}`: {e} ({e.__class__.__name__})"
+            )
+            ads_logger.warn(
                 f"exception parsing ref target file `{raw_path}` for Arxiv session `{session_id}`: {e} ({e.__class__.__name__})"
             )
             continue
@@ -269,6 +288,7 @@ def analyze_session(
                     bits = line.strip().split()
                     if not bits:
                         logger.warn(f"unexpected empty line in `{resolved_path}`")
+                        ads_logger.warn(f"unexpected empty line in `{resolved_path}`")
                         continue
 
                     if bits[0] == b"1":
@@ -279,9 +299,15 @@ def analyze_session(
             logger.warn(
                 f"unexpected missing ref resolved file `{resolved_path}` for Arxiv session `{session_id}`"
             )
+            ads_logger.warn(
+                f"unexpected missing ref resolved file `{resolved_path}` for Arxiv session `{session_id}`"
+            )
             continue
         except Exception as e:
             logger.warn(
+                f"exception parsing ref resolved file `{resolved_path}` for Arxiv session `{session_id}`: {e} ({e.__class__.__name__})"
+            )
+            ads_logger.warn(
                 f"exception parsing ref resolved file `{resolved_path}` for Arxiv session `{session_id}`: {e} ({e.__class__.__name__})"
             )
             continue
@@ -301,7 +327,7 @@ def analyze_session(
 
 
 def compare_outcomes(
-    session_id, A_config, B_config, logger=default_logger, ignore_pdfonly: bool = False
+    session_id, A_config, B_config, logger=default_logger, ads_logger=ads_logger, ignore_pdfonly: bool = False
 ):
     """
     Given two processing passes of a single Arxiv update session, generate
@@ -327,10 +353,10 @@ def compare_outcomes(
     er2 = B_config.classic_session_log_path(session_id) / "extractrefs.out"
 
     A_results = dict(
-        (t[0], t[1:]) for t in _target_refs_for_session(er1, True, A_config, logger)
+        (t[0], t[1:]) for t in _target_refs_for_session(er1, True, A_config, logger, ads_logger)
     )
     B_results = dict(
-        (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger)
+        (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger, ads_logger)
     )
 
     # Set up to deal with withdrawals. They're not failures, but they can't
@@ -411,7 +437,7 @@ def compare_outcomes(
 
 
 def compare_refstrings(
-    session_id, A_config, B_config, show_diff=False, logger=default_logger
+    session_id, A_config, B_config, show_diff=False, logger=default_logger, ads_logger=ads_logger
 ):
     """
     Given two processing passes of a single Arxiv update session, generate
@@ -439,10 +465,10 @@ def compare_refstrings(
     er2 = B_config.classic_session_log_path(session_id) / "extractrefs.out"
 
     A_results = dict(
-        (t[0], t[1:]) for t in _target_refs_for_session(er1, True, A_config, logger)
+        (t[0], t[1:]) for t in _target_refs_for_session(er1, True, A_config, logger, ads_logger)
     )
     B_results = dict(
-        (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger)
+        (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger, ads_logger)
     )
 
     # Set up to deal with withdrawals. They're not failures, but they can't
@@ -775,7 +801,7 @@ class ClassicSessionReprocessor(object):
         subprocess.check_call(argv, shell=False, close_fds=True)
 
 
-def _maybe_load_raw_file(path, logger) -> Set[str]:
+def _maybe_load_raw_file(path, logger, ads_logger) -> Set[str]:
     MAX_RS_LEN = 512
     refstrings = set()
 
@@ -794,6 +820,9 @@ def _maybe_load_raw_file(path, logger) -> Set[str]:
 
                 if len(rs) > MAX_RS_LEN:
                     logger.debug(
+                        f'truncating reference string "{rs[:20]}..." in `{path}`'
+                    )
+                    ads_logger.debug(
                         f'truncating reference string "{rs[:20]}..." in `{path}`'
                     )
                     rs = rs[:MAX_RS_LEN]
@@ -842,6 +871,7 @@ def compare_resolved(
     rcache: ResolverCache,
     max_resolves: Optional[int] = None,
     logger=default_logger,
+    ads_logger=default_logger,
     **kwargs,
 ):
     """
@@ -865,10 +895,10 @@ def compare_resolved(
     er2 = B_config.classic_session_log_path(session_id) / "extractrefs.out"
 
     A_results = dict(
-        (t[0], t[1:]) for t in _target_refs_for_session(er1, True, A_config, logger)
+        (t[0], t[1:]) for t in _target_refs_for_session(er1, True, A_config, logger, ads_logger)
     )
     B_results = dict(
-        (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger)
+        (t[0], t[1:]) for t in _target_refs_for_session(er2, True, B_config, logger, ads_logger)
     )
 
     stems = set(A_results.keys())
@@ -900,8 +930,8 @@ def compare_resolved(
             A_ext, A_path = A_results.get(stem, (None, None))
             B_ext, B_path = B_results.get(stem, (None, None))
 
-            A_refstrings = _maybe_load_raw_file(A_path, logger)
-            B_refstrings = _maybe_load_raw_file(B_path, logger)
+            A_refstrings = _maybe_load_raw_file(A_path, logger, ads_logger)
+            B_refstrings = _maybe_load_raw_file(B_path, logger, ads_logger)
 
             A_uniques[stem] = A_refstrings - B_refstrings
             B_uniques[stem] = B_refstrings - A_refstrings
@@ -936,7 +966,9 @@ def compare_resolved(
         logger.warn(
             f"stopping at {len(results)} items (out of {len(stems)}) to keep number of resolutions below {max_resolves}"
         )
-
+        ads_logger.warn(
+            f"stopping at {len(results)} items (out of {len(stems)}) to keep number of resolutions below {max_resolves}"
+        )
     # Resolve all the things!
 
     resolved = rcache.resolve(to_resolve, **kwargs)
@@ -980,12 +1012,13 @@ def compare_item_resolutions(
     B_config: Filepaths,
     rcache: ResolverCache,
     logger=default_logger,
+    ads_logger=default_logger
 ):
     A_path = A_config.target_refs_base / (stem + ".raw")
     B_path = B_config.target_refs_base / (stem + ".raw")
 
-    A_refstrings = _maybe_load_raw_file(A_path, logger)
-    B_refstrings = _maybe_load_raw_file(B_path, logger)
+    A_refstrings = _maybe_load_raw_file(A_path, logger, ads_logger)
+    B_refstrings = _maybe_load_raw_file(B_path, logger, ads_logger)
 
     resolved = rcache.resolve(A_refstrings | B_refstrings)
 
