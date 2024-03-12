@@ -40,7 +40,7 @@ import time
 from typing import List, Optional, TextIO, Union
 from adsputils import setup_logging, load_config
 
-from .settings import Settings
+from .ref_extract_paths import Filepaths
 from .utils import split_item_path
 
 __all__ = ["entrypoint", "CompatExtractor"]
@@ -54,8 +54,8 @@ ads_logger = setup_logging(__name__, proj_home=proj_home,
                         attach_stdout=config.get('LOG_STDOUT', True))
 
 class CompatExtractor(object):
-    settings: Settings = None
-    "A Settings object with path configuration information"
+    filepaths: Filepaths = None
+    "A Filepaths object with path configuration information"
 
     logger: logging.Logger = None
     "A logger"
@@ -255,24 +255,24 @@ The fulltext filenames typically are in one of these forms:
         else:
             default_logger.setLevel(logging.INFO)
 
-        # Now let's do the Settings configuration ...
+        # Now let's do the Filepaths configuration ...
 
-        settings = Settings.new_defaults()
+        filepaths = Filepaths.new_defaults()
         if settings.pbase is not None:
-            settings.fulltext_base = Path(settings.pbase)
+            filepaths.fulltext_base = Path(settings.pbase)
 
         if settings.tbase is not None:
-            settings.target_refs_base = Path(settings.tbase)
+            filepaths.target_refs_base = Path(settings.tbase)
 
         if (
             settings.texbindir is not None
         ):  # this is `--texbase`; our semantics are different
-            settings.tex_bin_dir = Path(settings.texbindir)
+            filepaths.tex_bin_dir = Path(settings.texbindir)
 
         # Now common options.
 
         inst = cls()
-        inst.settings = settings
+        inst.filepaths = filepaths
         inst.logger = default_logger
         inst.ads_logger = ads_logger
         inst.force = settings.force
@@ -539,7 +539,7 @@ The fulltext filenames typically are in one of these forms:
     ) -> Optional[str]:
         # Check out the fulltext source
 
-        ft_path = self.settings.fulltext_base / f"{item_stem}.{item_ext}"
+        ft_path = self.filepaths.fulltext_base / f"{item_stem}.{item_ext}"
 
         if not ft_path.exists():
             self.item_warn("cannot find expected fulltext", ft_path=ft_path)
@@ -557,7 +557,7 @@ The fulltext filenames typically are in one of these forms:
 
         # Check out the target refs file
 
-        tr_path = self.settings.target_refs_base / f"{item_stem}.raw"
+        tr_path = self.filepaths.target_refs_base / f"{item_stem}.raw"
 
         if not tr_path.exists():
             self.item_trace1("need to create output target-ref file", tr_path=tr_path)
@@ -628,7 +628,7 @@ The fulltext filenames typically are in one of these forms:
             if is_pdf:
                 pdf_path = ft_path
             else:
-                pdf_path = self.settings.fulltext_base / f"{item_stem}.pdf"
+                pdf_path = self.filepaths.fulltext_base / f"{item_stem}.pdf"
 
             if not pdf_path.exists():
                 self.item_warn("cannot find expected PDF", pdf_path=pdf_path)

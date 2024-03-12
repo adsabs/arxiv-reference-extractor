@@ -1,5 +1,5 @@
 """
-March 12th 2024: Mugdha Polimera modified this code to be called "settings" instead of "config" to avoid confusion with our regular handling of config files from master pipeline
+March 12th 2024: Mugdha Polimera modified this code to be called "ref_extract_paths" instead of "config" to avoid confusion with our regular handling of config files from master pipeline
 
 A simple configuration abstraction to hopefully make it easy to use these
 modules in both standalone CLIs and the standard Celery environment.
@@ -8,7 +8,7 @@ modules in both standalone CLIs and the standard Celery environment.
 import os
 from pathlib import Path
 
-__all__ = ["Settings", "parse_dumb_settings_file"]
+__all__ = ["Filepaths", "parse_dumb_paths_file"]
 
 
 def _maybe_envpath(var_name: str) -> Path:
@@ -18,7 +18,7 @@ def _maybe_envpath(var_name: str) -> Path:
     return None
 
 
-class Settings(object):
+class Filepaths(object):
     fulltext_base: Path = None
     """
     Where to look for ArXiv fulltext sources. Defaults to
@@ -56,7 +56,7 @@ class Settings(object):
     @classmethod
     def new_defaults(cls):
         """
-        Create a new Settings file with default paths set for ADS infra.
+        Create a new Filepaths file with default paths set for ADS infra.
         """
 
         abstracts = Path(os.environ.get("ADS_ABSTRACTS", "/proj/ads/abstracts"))
@@ -111,9 +111,9 @@ class Settings(object):
         return self.logs_base / session_id.split("-")[0] / session_id
 
 
-def parse_dumb_settings_file(path: str) -> dict:
+def parse_dumb_paths_file(path: str) -> dict:
     """
-    Parse a very simpleminded settings file. This function supports the
+    Parse a very simpleminded file defining file paths. This function supports the
     tools in the `../diagnostics` directory. The main design constraint here is
     that the settings file must be `source`-able in a Bourne shell. So, the format
     is that variables are assigned with simple `name=value` syntax.

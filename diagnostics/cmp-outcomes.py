@@ -18,7 +18,7 @@ diagnostics_dir = osp.dirname(__file__)
 app_dir = osp.join(diagnostics_dir, osp.pardir)
 sys.path.append(app_dir)
 
-from ads_ref_extract import settings, classic_analytics
+from ads_ref_extract import ref_extract_paths, classic_analytics
 
 if len(sys.argv) != 4:
     print(f"usage: {sys.argv[0]} <tagA> <tagB> <session-id>")
@@ -30,17 +30,17 @@ session_id = sys.argv[3]
 
 ignore_pdfonly = False
 
-diagnostics_cfg = settings.parse_dumb_settings_file(
+diagnostics_cfg = ref_extract_paths.parse_dumb_paths_file(
     osp.join(diagnostics_dir, "diagnostics.cfg")
 )
 
-cfgA = settings.Settings.new_defaults()
+cfgA = ref_extract_paths.Filepaths.new_defaults()
 cfgA.logs_base = Path(f"{diagnostics_cfg['results_dir']}/{tagA}/logs")
 cfgA.target_refs_base = Path(
     f"{diagnostics_cfg['results_dir']}/{tagA}/references/sources"
 )
 
-cfgB = settings.Settings.new_defaults()
+cfgB = ref_extract_paths.Filepaths.new_defaults()
 cfgB.logs_base = Path(f"{diagnostics_cfg['results_dir']}/{tagB}/logs")
 cfgB.target_refs_base = Path(
     f"{diagnostics_cfg['results_dir']}/{tagB}/references/sources"

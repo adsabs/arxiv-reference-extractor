@@ -20,7 +20,7 @@ from typing import Generator, Tuple
 from xml.etree import ElementTree as etree
 
 from .compat import CompatExtractor
-from .settings import Settings
+from .ref_extract_paths import Filepaths
 
 
 __all__ = ["extract_references"]
@@ -52,7 +52,7 @@ def extract_references(
     successful extraction. If the return value is a negative integer, extraction
     failed.
     """
-    http_status, result = _call_grobid(pdf_path, session.settings)
+    http_status, result = _call_grobid(pdf_path, session.filepaths)
 
     if http_status != 200:
         session.item_warn("GROBID returned an error code", code=http_status)
@@ -77,10 +77,10 @@ def extract_references(
     return n
 
 
-def _call_grobid(pdf_path: Path, settings: Settings) -> Tuple[int, str]:
+def _call_grobid(pdf_path: Path, filepaths: Filepaths) -> Tuple[int, str]:
     client = GrobidClient(
         check_server=False,
-        grobid_server=settings.grobid_server,
+        grobid_server=filepaths.grobid_server,
     )
     _pdf_path, http_status, result = client.process_pdf(
         "processReferences",
@@ -113,13 +113,13 @@ def _get_refstrings(result: str) -> Generator[str, None, None]:
 
 
 def _do_oneoff(settings):
-    settings = Settings.new_defaults()
+    filepaths = Filepaths.new_defaults()
 
-    pdf_path = settings.fulltext_base / f"{settings.item}.pdf"
+    pdf_path = filepaths.fulltext_base / f"{settings.item}.pdf"
     if not pdf_path.exists():
         raise Exception(f"no such file `{pdf_path}`")
 
-    http_status, result = _call_grobid(pdf_path, settings)
+    http_status, result = _call_grobid(pdf_path, filepaths)
 
     if http_status != 200:
         raise Exception(f"GROBID returned status {http_status}, not 200 as expected")

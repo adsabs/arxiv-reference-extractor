@@ -527,7 +527,7 @@ class TexSourceItem(object):
             return []
 
         command = [
-            str(session.settings.tex_bin_dir / "pdflatex"),
+            str(session.filepaths.tex_bin_dir / "pdflatex"),
             "-interaction=nonstopmode",
             str(self.path),
         ]
@@ -837,11 +837,11 @@ class TexSources(object):
 
 
 def _do_one(settings, until):
-    from .settings import Settings
+    from .ref_extract_paths import Filepaths
     from .utils import get_quick_logger
 
     session = CompatExtractor()
-    session.settings = Settings.new_defaults()
+    session.filepaths = Filepaths.new_defaults()
     session.logger = get_quick_logger("tex-cli")
     session.log_stream = sys.stderr
     session.output_stream = sys.stdout

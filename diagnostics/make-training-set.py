@@ -20,7 +20,7 @@ diagnostics_dir = osp.dirname(__file__)
 app_dir = osp.join(diagnostics_dir, osp.pardir)
 sys.path.append(app_dir)
 
-from ads_ref_extract import settings, classic_analytics, resolver_cache, utils
+from ads_ref_extract import ref_extract_paths, classic_analytics, resolver_cache, utils
 
 logger = utils.get_quick_logger("make-arxiv-training-set")
 
@@ -36,11 +36,11 @@ parser.add_argument(
 parser.add_argument("tag")
 settings = parser.parse_args()
 
-diagnostics_cfg = settings.parse_dumb_settings_file(
+diagnostics_cfg = ref_extract_paths.parse_dumb_paths_file(
     osp.join(diagnostics_dir, "diagnostics.cfg")
 )
 
-cfg = settings.Settings.new_defaults()
+cfg = ref_extract_paths.Filepaths.new_defaults()
 cfg.logs_base = Path(f"{diagnostics_cfg['results_dir']}/{settings.tag}/logs")
 cfg.target_refs_base = Path(
     f"{diagnostics_cfg['results_dir']}/{settings.tag}/references/sources"

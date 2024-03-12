@@ -27,7 +27,7 @@ diagnostics_dir = osp.dirname(__file__)
 app_dir = osp.join(diagnostics_dir, osp.pardir)
 sys.path.append(app_dir)
 
-from ads_ref_extract import settings, classic_analytics
+from ads_ref_extract import ref_extract_paths, classic_analytics
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -40,10 +40,10 @@ parser.add_argument("tag")
 parser.add_argument("session_id")
 settings = parser.parse_args()
 
-diagnostics_cfg = settings.parse_dumb_settings_file(
+diagnostics_cfg = ref_extract_paths.parse_dumb_paths_file(
     osp.join(diagnostics_dir, "diagnostics.cfg")
 )
-cfg = settings.Settings.new_defaults()
+cfg = ref_extract_paths.Filepaths.new_defaults()
 repro = classic_analytics.ClassicSessionReprocessor(settings=cfg)
 
 cfg.fulltext_base = Path(diagnostics_cfg["fulltext_dir"])
