@@ -557,7 +557,7 @@ The fulltext filenames typically are in one of these forms:
 
         # Check out the target refs file
 
-        tr_path = self.filepaths.target_refs_base / f"{item_stem}.raw"
+        tr_path = self.filepaths.target_refs_base / f"{item_stem}_pipeline.raw"
 
         if not tr_path.exists():
             self.item_trace1("need to create output target-ref file", tr_path=tr_path)

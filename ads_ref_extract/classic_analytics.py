@@ -1014,8 +1014,8 @@ def compare_item_resolutions(
     logger=default_logger,
     ads_logger=default_logger
 ):
-    A_path = A_config.target_refs_base / (stem + ".raw")
-    B_path = B_config.target_refs_base / (stem + ".raw")
+    A_path = A_config.target_refs_base / (stem + "_pipeline.raw")
+    B_path = B_config.target_refs_base / (stem + "_pipeline.raw")
 
     A_refstrings = _maybe_load_raw_file(A_path, logger, ads_logger)
     B_refstrings = _maybe_load_raw_file(B_path, logger, ads_logger)
