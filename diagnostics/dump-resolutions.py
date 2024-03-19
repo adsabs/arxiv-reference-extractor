@@ -17,7 +17,7 @@ diagnostics_dir = osp.dirname(__file__)
 app_dir = osp.join(diagnostics_dir, osp.pardir)
 sys.path.append(app_dir)
 
-from ads_ref_extract import config, resolver_cache
+from ads_ref_extract import ref_extract_paths, resolver_cache
 
 if len(sys.argv) < 2:
     print(f"usage: {sys.argv[0]} <file1> [file2...]")
@@ -25,7 +25,7 @@ if len(sys.argv) < 2:
 
 paths = sys.argv[1:]
 
-diagnostics_cfg = config.parse_dumb_config_file(
+diagnostics_cfg = ref_extract_paths.parse_dumb_paths_file(
     osp.join(diagnostics_dir, "diagnostics.cfg")
 )
 
