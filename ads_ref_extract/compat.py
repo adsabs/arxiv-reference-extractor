@@ -508,10 +508,6 @@ The fulltext filenames typically are in one of these forms:
         exception = False
 
         try:
-            # Get both PDF and TeX reference paths
-            tr_path_pdf = self.filepaths.target_refs_base / f"{item_stem}_pipeline_grobid.raw"
-            tr_path_tex = self.filepaths.target_refs_base / f"{item_stem}_pipeline_tex.raw"
-            
             # Check for both PDF and TeX versions
             pdf_exists = False
             tex_exists = False
