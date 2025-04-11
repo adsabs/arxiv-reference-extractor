@@ -524,10 +524,12 @@ The fulltext filenames typically are in one of these forms:
                     break
             
             # Check TeX versions
+            tex_ext = None
             for ext in ["tar.gz", "tar", "tex.gz", "tex", "gz"]:
                 tex_path = self.filepaths.fulltext_base / f"{item_stem}.{ext}"
                 if tex_path.exists():
                     tex_exists = True
+                    tex_ext = ext  # Capture the actual extension found
                     break
             
             if not pdf_exists and not tex_exists:
@@ -543,7 +545,7 @@ The fulltext filenames typically are in one of these forms:
                 pdf_result = self._process_one_inner(bibcode, item_stem, "pdf", is_pdf=True)
             
             if tex_exists and not self.no_tex:
-                tex_result = self._process_one_inner(bibcode, item_stem, "tex", is_pdf=False)
+                tex_result = self._process_one_inner(bibcode, item_stem, tex_ext, is_pdf=False)
             
             # Determine overall outcome
             if pdf_result == "withdrawn" or tex_result == "withdrawn":
@@ -598,7 +600,7 @@ The fulltext filenames typically are in one of these forms:
             self.item_give_up("unexpected-extension")
             return None
 
-        # Create paths for both PDF and TeX reference files
+        # Create output paths for both PDF and TeX reference files
         tr_path_pdf = self.filepaths.target_refs_base / f"{item_stem}_pipeline_grobid.raw"
         tr_path_tex = self.filepaths.target_refs_base / f"{item_stem}_pipeline_tex.raw"
 
