@@ -508,12 +508,54 @@ The fulltext filenames typically are in one of these forms:
         exception = False
 
         try:
-            tr_path = self._process_one_inner(bibcode, item_stem, item_ext)
-            if tr_path is None:
+            # Check for both PDF and TeX versions
+            pdf_exists = False
+            tex_exists = False
+            
+            # Check PDF versions
+            for ext in ["pdf", "pdf.gz"]:
+                pdf_path = self.filepaths.fulltext_base / f"{item_stem}.{ext}"
+                if pdf_path.exists():
+                    pdf_exists = True
+                    break
+            
+            # Check TeX versions
+            tex_ext = None
+            for ext in ["tar.gz", "tar", "tex.gz", "tex", "gz"]:
+                tex_path = self.filepaths.fulltext_base / f"{item_stem}.{ext}"
+                if tex_path.exists():
+                    tex_exists = True
+                    tex_ext = ext  # Capture the actual extension found
+                    break
+            
+            if not pdf_exists and not tex_exists:
+                self.item_warn("cannot find any version of the preprint")
+                self.item_give_up("missing-fulltext")
+                return None
+            
+            # Process both versions if they exist
+            pdf_result = None
+            tex_result = None
+            
+            if pdf_exists and not self.no_pdf:
+                pdf_result = self._process_one_inner(bibcode, item_stem, "pdf", is_pdf=True)
+            
+            if tex_exists and not self.no_tex:
+                tex_result = self._process_one_inner(bibcode, item_stem, tex_ext, is_pdf=False)
+            
+            # Determine overall outcome
+            if pdf_result == "withdrawn" or tex_result == "withdrawn":
+                outcome = "withdrawn"
+                tr_path = "withdrawn"
+            elif pdf_result is None and tex_result is None:
                 outcome = "fail"
+                tr_path = None
             else:
                 outcome = "success"
+                # Return PDF path as default if available, otherwise TeX path
+                tr_path = str(tr_path_pdf) if pdf_result is not None else str(tr_path_tex)
                 self._failure_reason = "N/A"
+                
         except Exception as e:
             tr_path = None
             self.item_warn("unhandled exception", e=e, c=e.__class__.__name__)
@@ -535,10 +577,9 @@ The fulltext filenames typically are in one of these forms:
         return tr_path
 
     def _process_one_inner(
-        self, bibcode: Optional[str], item_stem: str, item_ext: str
+        self, bibcode: Optional[str], item_stem: str, item_ext: str, is_pdf: bool
     ) -> Optional[str]:
         # Check out the fulltext source
-
         ft_path = self.filepaths.fulltext_base / f"{item_stem}.{item_ext}"
 
         if not ft_path.exists():
@@ -547,44 +588,44 @@ The fulltext filenames typically are in one of these forms:
             return None
 
         if item_ext in ("tar.gz", "tar", "tex.gz", "tex", "gz"):
-            is_pdf = False
+            input_is_pdf = False
         elif item_ext in ("pdf", "pdf.gz"):
-            is_pdf = True
+            input_is_pdf = True
         else:
             self.item_warn("unexpected input extension", ext=item_ext)
             self.item_give_up("unexpected-extension")
             return None
 
-        # Check out the target refs file
+        # Create output paths for both PDF and TeX reference files
+        tr_path_pdf = self.filepaths.target_refs_base / f"{item_stem}_pipeline_grobid.raw"
+        tr_path_tex = self.filepaths.target_refs_base / f"{item_stem}_pipeline_tex.raw"
 
-        tr_path = self.filepaths.target_refs_base / f"{item_stem}_pipeline.raw"
+        # Select the appropriate target path based on is_pdf parameter
+        tr_path = tr_path_pdf if is_pdf else tr_path_tex
 
         if not tr_path.exists():
-            self.item_trace1("need to create output target-ref file", tr_path=tr_path)
+            self.item_trace1(f"need to create {'grobid' if is_pdf else 'tex'} output target-ref file", tr_path=tr_path)
         elif tr_path.stat().st_mtime < ft_path.stat().st_mtime:
-            self.item_trace1("output target-ref file needs updating", tr_path=tr_path)
+            self.item_trace1(f"{'grobid' if is_pdf else 'tex'} output target-ref file needs updating", tr_path=tr_path)
         elif self.force:
             self.item_trace1(
-                "forcing recreation of output target-ref file", tr_path=tr_path
+                f"forcing recreation of {'grobid' if is_pdf else 'tex'} output target-ref file", tr_path=tr_path
             )
         else:
-            self.item_trace1("output target-ref file is up-to-date", tr_path=tr_path)
+            self.item_trace1(f"{'grobid' if is_pdf else 'tex'} output target-ref file is up-to-date", tr_path=tr_path)
             return str(tr_path)
 
-        # TODO: this is where classic guesses the bibcode and subdate if needed.
         if bibcode is None:
             self.item_warn("TEMP bailing because no bibcode")
             self.item_give_up("bibcode-unimplemented")
             return None
 
-        wrote_refs = False
-
+        # Process TeX if this is a TeX run
         if not is_pdf and not self.no_tex:
             if self.debug_source_files_dir is None:
                 workdir = None
             else:
                 import shutil
-
                 workdir = self.debug_source_files_dir / item_stem.replace("/", "_")
                 shutil.rmtree(workdir, ignore_errors=True)
                 workdir.mkdir()
@@ -592,7 +633,6 @@ The fulltext filenames typically are in one of these forms:
 
             try:
                 from . import tex
-
                 outcome = tex.extract_references(
                     self, ft_path, tr_path, bibcode, workdir=workdir
                 )
@@ -600,12 +640,12 @@ The fulltext filenames typically are in one of these forms:
                 if isinstance(outcome, int):
                     if outcome < 0:
                         self.item_info("TeX-based extraction failed")
+                        return None
                     else:
-                        wrote_refs = True
+                        self.item_info("TeX-based extraction succeeded")
+                        return str(tr_path)
                 elif isinstance(outcome, str):
                     if outcome == "withdrawn":
-                        # This is sort of a failure, but not one we can do
-                        # anything about.
                         return "withdrawn"
                     else:
                         raise Exception(f"unexpected outcome string `{outcome}`")
@@ -615,17 +655,17 @@ The fulltext filenames typically are in one of these forms:
                 self.item_warn("TeX extraction raised", e=e, c=e.__class__.__name__)
                 self.logger.warning("detailed traceback:", exc_info=sys.exc_info())
                 self.ads_logger.warning("detailed traceback:", exc_info=sys.exc_info())
+                return None
 
-        if not wrote_refs:
-            # For now (?), farm out to the classic Perl implementation to try to
-            # extract refs from the PDF.
+        # Process PDF if this is a PDF run
+        if is_pdf and not self.no_pdf:
             self.item_info(
                 "attempting PDF-based reference extraction",
-                is_pdf=is_pdf,
+                is_pdf=input_is_pdf,
                 backend=self.pdf_backend,
             )
 
-            if is_pdf:
+            if input_is_pdf:
                 pdf_path = ft_path
             else:
                 pdf_path = self.filepaths.fulltext_base / f"{item_stem}.pdf"
@@ -644,28 +684,29 @@ The fulltext filenames typically are in one of these forms:
                     self.item_exec(argv)
                 except subprocess.CalledProcessError as e:
                     self.item_warn("Perl-based PDF extraction failed", argv=argv, e=e)
+                    return None
                 except Exception as e:
                     self.item_warn(
                         "unexpected failure when trying Perl-based PDF extraction",
                         argv=argv,
                         e=e,
                     )
+                    return None
             elif self.pdf_backend == "grobid":
                 from .grobid import extract_references
-
                 extract_references(self, pdf_path, tr_path, bibcode)
             else:
-                # This should be handled much sooner!
                 self.item_warn("unhandled PDF backend name", backend=self.pdf_backend)
                 return None
 
             if tr_path.exists():
                 self.item_info("PDF-based extraction seems to have worked")
+                return str(tr_path)
             else:
                 self.item_info("PDF-based extraction didn't create its output")
                 return None
 
-        return tr_path
+        return None
 
 
 def entrypoint(argv=sys.argv):
